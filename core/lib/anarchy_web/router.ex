@@ -24,15 +24,17 @@ defmodule AnarchyWeb.Router do
   scope "/", AnarchyWeb do
     pipe_through(:browser)
 
-    live("/", DashboardLive, :index)
-    live("/projects", ProjectListLive, :index)
-    live("/projects/:id", ProjectDetailLive, :show)
-    live("/projects/:project_id/chat", ArchitectChatLive, :chat)
-    live("/designs/:id", DesignEditorLive, :edit)
-    live("/tasks/:id", TaskDetailLive, :show)
-    live("/agents", AgentMonitorLive, :index)
-    live("/projects/:project_id/map", AgentMapLive, :map)
-    live("/learnings", LearningsLive, :index)
+    live_session :default, layout: {AnarchyWeb.Layouts, :app} do
+      live("/", DashboardLive, :index)
+      live("/projects", ProjectListLive, :index)
+      live("/projects/:id", ProjectDetailLive, :show)
+      live("/projects/:project_id/chat", ArchitectChatLive, :chat)
+      live("/designs/:id", DesignEditorLive, :edit)
+      live("/tasks/:id", TaskDetailLive, :show)
+      live("/agents", AgentMonitorLive, :index)
+      live("/projects/:project_id/map", AgentMapLive, :map)
+      live("/learnings", LearningsLive, :index)
+    end
   end
 
   scope "/", AnarchyWeb do

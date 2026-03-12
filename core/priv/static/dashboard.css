@@ -16,6 +16,11 @@
   --danger-soft: #fef3f2;
   --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05);
   --shadow-lg: 0 20px 50px rgba(15, 23, 42, 0.08);
+  /* Aliases for Phase 3-6 components */
+  --fg: var(--ink);
+  --bg: var(--page);
+  --surface: var(--card);
+  --border: var(--line);
 }
 
 * {
@@ -464,12 +469,10 @@ pre,
 
 /* --- Phase 3-4: Project/Design/Chat/Task/Agent UI --- */
 
-.nav-links { display: flex; gap: 1rem; }
-.nav-links a { color: var(--muted); text-decoration: none; padding: 0.25rem 0.5rem; border-radius: 4px; }
-.nav-links a.active, .nav-links a:hover { color: var(--fg); background: var(--surface); }
+/* .nav-links now scoped under .global-nav (see bottom of file) */
 
 .section { margin-bottom: 2rem; }
-.section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+/* .section-header defined in Phase 1 block (line 280) */
 
 .btn { display: inline-block; padding: 0.5rem 1rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); color: var(--fg); cursor: pointer; font-size: 0.875rem; text-decoration: none; }
 .btn:hover { background: var(--bg); }
@@ -505,10 +508,10 @@ pre,
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
 .input { width: 100%; padding: 0.5rem; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); color: var(--fg); font-size: 0.875rem; }
 .input:focus { outline: none; border-color: var(--accent); }
-.mono { font-family: 'SF Mono', 'Fira Code', monospace; }
+/* .mono defined in Phase 1 block (line 125) */
 textarea.input { resize: vertical; }
 
-.empty-state { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+/* .empty-state defined in Phase 1 block (line 415) */
 
 .text-muted { color: var(--muted); }
 .text-center { text-align: center; }
@@ -619,3 +622,15 @@ textarea.input { resize: vertical; }
 .notification-item.severity-high { border-left: 3px solid #f87171; }
 .notification-item.severity-medium { border-left: 3px solid #fbbf24; }
 .notification-item.severity-low { border-left: 3px solid #4ade80; }
+
+/* Global navigation */
+.global-nav { display: flex; align-items: center; gap: 2rem; padding: 0.75rem 1.5rem; background: var(--ink, #202123); color: #fff; }
+.nav-brand { font-weight: 700; font-size: 1.1rem; color: #fff; text-decoration: none; letter-spacing: -0.02em; }
+.global-nav .nav-links { display: flex; gap: 1.25rem; }
+.global-nav .nav-links a { color: rgba(255,255,255,0.7); text-decoration: none; font-size: 0.85rem; transition: color 0.15s; }
+.global-nav .nav-links a:hover, .global-nav .nav-links a.active { color: #fff; }
+
+/* Flash messages */
+.flash { padding: 0.75rem 1rem; margin: 0.75rem 1.5rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
+.flash-info { background: #dbeafe; color: #1e40af; }
+.flash-error { background: #fee2e2; color: #991b1b; }

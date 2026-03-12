@@ -48,7 +48,17 @@ defmodule AnarchyWeb.Layouts do
   @spec app(map()) :: Phoenix.LiveView.Rendered.t()
   def app(assigns) do
     ~H"""
+    <nav class="global-nav">
+      <.link navigate="/" class="nav-brand">Anarchy</.link>
+      <div class="nav-links">
+        <.link navigate="/projects">Projects</.link>
+        <.link navigate="/agents">Agents</.link>
+        <.link navigate="/learnings">Learnings</.link>
+      </div>
+    </nav>
     <main class="app-shell">
+      <div :if={@flash["info"]} class="flash flash-info" phx-click="lv:clear-flash" phx-value-key="info">{@flash["info"]}</div>
+      <div :if={@flash["error"]} class="flash flash-error" phx-click="lv:clear-flash" phx-value-key="error">{@flash["error"]}</div>
       {@inner_content}
     </main>
     """

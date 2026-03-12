@@ -1558,7 +1558,9 @@ defmodule Anarchy.OrchestratorStatusTest do
     assert StatusDashboard.humanize_codex_message(fallback_reasoning) == "reasoning update"
   end
 
-  test "application stop renders offline status" do
+  test "application stop renders offline status when TUI enabled" do
+    System.put_env("ANARCHY_TUI", "1")
+
     rendered =
       ExUnit.CaptureIO.capture_io(fn ->
         assert :ok = Anarchy.Application.stop(:normal)
@@ -1566,6 +1568,13 @@ defmodule Anarchy.OrchestratorStatusTest do
 
     assert rendered =~ "app_status=offline"
     refute rendered =~ "Timestamp:"
+  after
+    System.delete_env("ANARCHY_TUI")
+  end
+
+  test "application stop succeeds silently when TUI disabled" do
+    System.delete_env("ANARCHY_TUI")
+    assert :ok = Anarchy.Application.stop(:normal)
   end
 
   defp wait_for_snapshot(pid, predicate, timeout_ms \\ 200) when is_function(predicate, 1) do

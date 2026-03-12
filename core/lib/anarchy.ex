@@ -54,17 +54,22 @@ defmodule Anarchy.Application do
     else
       [
         Anarchy.Orchestrator,
-        Anarchy.HttpServer,
-        Anarchy.StatusDashboard
-      ]
+        Anarchy.HttpServer
+      ] ++ dashboard_children()
     end
+  end
+
+  defp dashboard_children do
+    if tui_enabled?(), do: [Anarchy.StatusDashboard], else: []
   end
 
   @impl true
   def stop(_state) do
-    Anarchy.StatusDashboard.render_offline_status()
+    if tui_enabled?(), do: Anarchy.StatusDashboard.render_offline_status()
     :ok
   end
+
+  defp tui_enabled?, do: System.get_env("ANARCHY_TUI") == "1"
 
   defp oban_config do
     Application.get_env(:anarchy, Oban, [])

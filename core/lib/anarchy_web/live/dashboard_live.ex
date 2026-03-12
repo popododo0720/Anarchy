@@ -3,7 +3,7 @@ defmodule AnarchyWeb.DashboardLive do
   Live observability dashboard for Anarchy.
   """
 
-  use Phoenix.LiveView, layout: {AnarchyWeb.Layouts, :app}
+  use Phoenix.LiveView
 
   alias AnarchyWeb.{Endpoint, ObservabilityPubSub, Presenter}
   @runtime_tick_ms 1_000
