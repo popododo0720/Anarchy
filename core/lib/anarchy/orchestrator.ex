@@ -249,6 +249,7 @@ defmodule Anarchy.Orchestrator do
 
   defp reconcile_running_tasks(%State{} = state) do
     state = reconcile_stalled_running_tasks(state)
+    state = prune_terminal_claims(state)
     running_ids = Map.keys(state.running)
 
     if running_ids == [] do
@@ -270,6 +271,42 @@ defmodule Anarchy.Orchestrator do
           state
       end
     end
+  end
+
+  # Remove claimed task IDs that have reached terminal states (completed/failed).
+  # CE loop tasks stay in `claimed` until their lifecycle completes via Oban/WorkflowEngine.
+  defp prune_terminal_claims(%State{claimed: claimed} = state) do
+    # Only query if there are CE-loop claims not in running (running tasks are tracked separately)
+    ce_only_claims = MapSet.difference(claimed, MapSet.new(Map.keys(state.running)))
+
+    if MapSet.size(ce_only_claims) == 0 do
+      state
+    else
+      claim_ids = MapSet.to_list(ce_only_claims)
+
+      case Tracker.fetch_task_states_by_ids(claim_ids) do
+        {:ok, states_map} ->
+          terminal = terminal_state_set()
+
+          still_active =
+            Enum.reject(claim_ids, fn id ->
+              case Map.get(states_map, id) do
+                nil -> true
+                status -> MapSet.member?(terminal, status)
+              end
+            end)
+            |> MapSet.new()
+
+          # Keep running-based claims + still-active CE claims
+          %{state | claimed: MapSet.union(MapSet.new(Map.keys(state.running)), still_active)}
+
+        {:error, _} ->
+          state
+      end
+    end
+  rescue
+    # Guard against non-UUID claim IDs (e.g., in-memory test fixtures)
+    _ -> state
   end
 
   @doc false
@@ -935,9 +972,12 @@ defmodule Anarchy.Orchestrator do
   end
 
   defp available_slots(%State{} = state) do
+    # Count both direct running tasks and CE-loop-claimed tasks (owned by Oban)
+    active_count = map_size(state.running) + MapSet.size(state.claimed)
+
     max(
       (state.max_concurrent_agents || Config.settings!().agent.max_concurrent_agents) -
-        map_size(state.running),
+        active_count,
       0
     )
   end

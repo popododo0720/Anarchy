@@ -143,38 +143,50 @@ defmodule AnarchyWeb.AgentMapLive do
 
   @impl true
   def handle_event("select_agent", %{"session-id" => session_id}, socket) do
-    # Unsubscribe from previous agent topic to prevent subscription leak
-    if socket.assigns[:subscribed_agent_topic] do
-      Phoenix.PubSub.unsubscribe(Anarchy.PubSub, socket.assigns.subscribed_agent_topic)
+    if not session_belongs_to_project?(session_id, socket.assigns.project.id) do
+      {:noreply, socket}
+    else
+      # Unsubscribe from previous agent topic to prevent subscription leak
+      if socket.assigns[:subscribed_agent_topic] do
+        Phoenix.PubSub.unsubscribe(Anarchy.PubSub, socket.assigns.subscribed_agent_topic)
+      end
+
+      topic = "agent:#{session_id}"
+      Phoenix.PubSub.subscribe(Anarchy.PubSub, topic)
+
+      mails = AgentMail.inbox(session_id, project_id: socket.assigns.project.id)
+      {:noreply, assign(socket, selected_agent: session_id, agent_output: [], agent_mails: mails, subscribed_agent_topic: "agent:#{session_id}")}
     end
-
-    topic = "agent:#{session_id}"
-    Phoenix.PubSub.subscribe(Anarchy.PubSub, topic)
-
-    mails = AgentMail.inbox(session_id, project_id: socket.assigns.project.id)
-    {:noreply, assign(socket, selected_agent: session_id, agent_output: [], agent_mails: mails, subscribed_agent_topic: "agent:#{session_id}")}
   end
 
   def handle_event("pause_agent", %{"session-id" => sid}, socket) do
-    Anarchy.SessionManager.pause_session(sid, "manual")
+    if session_belongs_to_project?(sid, socket.assigns.project.id) do
+      Anarchy.SessionManager.pause_session(sid, "manual")
+    end
+
     {:noreply, socket}
   end
 
   def handle_event("resume_agent", %{"session-id" => sid}, socket) do
-    Anarchy.SessionManager.update_session(sid, %{status: "active", paused_at: nil})
+    if session_belongs_to_project?(sid, socket.assigns.project.id) do
+      Anarchy.SessionManager.update_session(sid, %{status: "active", paused_at: nil})
+    end
+
     {:noreply, socket}
   end
 
   def handle_event("inject_instruction", %{"session-id" => sid, "message" => msg}, socket) when msg != "" do
-    AgentMail.send(%{
-      project_id: socket.assigns.project.id,
-      from_agent: "owner",
-      to_agent: sid,
-      subject: "Owner instruction",
-      body: msg,
-      type: "assign",
-      priority: "urgent"
-    })
+    if session_belongs_to_project?(sid, socket.assigns.project.id) do
+      AgentMail.send(%{
+        project_id: socket.assigns.project.id,
+        from_agent: "owner",
+        to_agent: sid,
+        subject: "Owner instruction",
+        body: msg,
+        type: "assign",
+        priority: "urgent"
+      })
+    end
 
     {:noreply, assign(socket, inject_input: "")}
   end
@@ -207,4 +219,13 @@ defmodule AnarchyWeb.AgentMapLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # --- Private ---
+
+  defp session_belongs_to_project?(session_id, project_id) do
+    case Anarchy.SessionManager.get_session(session_id) do
+      %{project_id: ^project_id} -> true
+      _ -> false
+    end
+  end
 end

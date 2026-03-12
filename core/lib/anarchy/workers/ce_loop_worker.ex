@@ -77,19 +77,27 @@ defmodule Anarchy.Workers.CELoopWorker do
   end
 
   defp wait_for_completion(pid, monitor_ref, task_id) do
-    receive do
-      {:DOWN, ^monitor_ref, :process, ^pid, :normal} ->
-        Logger.info("CE loop completed normally for task_id=#{task_id}")
-        :ok
+    result =
+      receive do
+        {:DOWN, ^monitor_ref, :process, ^pid, :normal} ->
+          Logger.info("CE loop completed normally for task_id=#{task_id}")
+          :ok
 
-      {:DOWN, ^monitor_ref, :process, ^pid, reason} ->
-        Logger.error("CE loop crashed for task_id=#{task_id}: #{inspect(reason)}")
-        {:error, reason}
-    after
-      # 4 hour timeout for entire CE loop
-      14_400_000 ->
-        Process.exit(pid, :kill)
-        {:error, :ce_loop_timeout}
+        {:DOWN, ^monitor_ref, :process, ^pid, reason} ->
+          Logger.error("CE loop crashed for task_id=#{task_id}: #{inspect(reason)}")
+          {:error, reason}
+      after
+        # 4 hour timeout for entire CE loop
+        14_400_000 ->
+          Process.exit(pid, :kill)
+          {:error, :ce_loop_timeout}
+      end
+
+    # On failure, ensure the task is marked failed so it doesn't remain in a phantom active state
+    if result != :ok do
+      Anarchy.Tracker.update_task_state(task_id, "failed")
     end
+
+    result
   end
 end

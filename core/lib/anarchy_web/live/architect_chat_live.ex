@@ -112,15 +112,20 @@ defmodule AnarchyWeb.ArchitectChatLive do
         ClaudeCode.send_message(socket.assigns.claude_pid, message)
         assign(socket, messages: messages, input: "", streaming: true, stream_buffer: "")
       else
-        # Session died or not started — start fresh and send first message
-        socket = assign(socket, messages: messages, input: "", streaming: true, stream_buffer: "")
+        # Session died or not started — unsubscribe old topic, start fresh
+        old_topic = socket.assigns[:session_id] && "agent:#{socket.assigns.session_id}"
+        if old_topic, do: Phoenix.PubSub.unsubscribe(Anarchy.PubSub, old_topic)
+
+        socket = assign(socket, messages: messages, input: "", stream_buffer: "")
         socket = start_architect_session(socket, socket.assigns.project)
 
-        if socket.assigns.claude_pid do
+        if socket.assigns.claude_pid && Process.alive?(socket.assigns.claude_pid) do
           ClaudeCode.send_message(socket.assigns.claude_pid, message)
+          assign(socket, streaming: true)
+        else
+          # Session failed to start — don't leave streaming stuck
+          assign(socket, streaming: false)
         end
-
-        socket
       end
 
     {:noreply, socket}
@@ -255,7 +260,7 @@ defmodule AnarchyWeb.ArchitectChatLive do
     rescue
       error ->
         Logger.warning("Failed to start architect session: #{Exception.message(error)}")
-        socket
+        assign(socket, session_id: nil, claude_pid: nil)
     end
   end
 

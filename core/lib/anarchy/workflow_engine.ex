@@ -84,6 +84,16 @@ defmodule Anarchy.WorkflowEngine do
     {:ok, :idle, data, actions}
   end
 
+  @impl true
+  def terminate(_reason, _state, data) do
+    # Kill worker process to prevent orphans when WorkflowEngine crashes
+    if data.current_worker_pid && Process.alive?(data.current_worker_pid) do
+      Process.exit(data.current_worker_pid, :shutdown)
+    end
+
+    :ok
+  end
+
   # --- State: :idle ---
 
   @impl true

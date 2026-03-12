@@ -40,6 +40,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
   @doc "Start interactive Claude session (no -p). Returns {:ok, session_id, pid}."
   @spec start_interactive(keyword()) :: {:ok, String.t(), pid()}
   def start_interactive(opts) do
+    validate_string_opts(opts)
     opts = Map.new(opts) |> Map.put(:mode, :interactive)
     {:ok, pid} = GenServer.start_link(__MODULE__, opts)
     session_id = GenServer.call(pid, :get_session_id)
@@ -257,6 +258,13 @@ defmodule Anarchy.Runtime.ClaudeCode do
     unless Keyword.has_key?(opts, :prompt) and is_binary(opts[:prompt]) and opts[:prompt] != "" do
       raise ArgumentError, ":prompt is required and must be a non-empty string"
     end
+
+    validate_string_opts(opts)
+  end
+
+  # Shared validation for string opts — null bytes and dash-prefix injection
+  defp validate_string_opts(opts) do
+    opts = if is_map(opts), do: Map.to_list(opts), else: opts
 
     for {key, value} <- opts, key in [:prompt, :model, :system_prompt, :workspace_path], value != nil do
       str = to_string(value)

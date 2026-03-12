@@ -163,6 +163,9 @@ defmodule AnarchyWeb.ProjectDetailLive do
   def handle_event("confirm_design", %{"id" => id}, socket) do
     design = Projects.get_design!(id)
 
+    if design.project_id != socket.assigns.project.id do
+      {:noreply, put_flash(socket, :error, "Design not found")}
+    else
     case Projects.confirm_design(design) do
       {:ok, confirmed_design} ->
         # Async decompose — results arrive via PubSub
@@ -183,17 +186,22 @@ defmodule AnarchyWeb.ProjectDetailLive do
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to confirm design")}
     end
+    end
   end
 
   def handle_event("decompose_design", %{"id" => id}, socket) do
     design = Projects.get_design!(id)
 
+    if design.project_id != socket.assigns.project.id do
+      {:noreply, put_flash(socket, :error, "Design not found")}
+    else
     case PMAgent.decompose_async(design) do
       {:ok, _pid} ->
         {:noreply, put_flash(socket, :info, "Decomposing design into tasks...")}
 
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Decomposition failed. Check server logs.")}
+    end
     end
   end
 
