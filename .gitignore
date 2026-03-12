@@ -1,0 +1,36 @@
+# Elixir/Mix
+core/_build/
+core/deps/
+core/cover/
+core/*.ez
+core/.tmp/
+
+# Escript
+core/bin/anarchy
+
+# Test artifacts
+core/UserspopodAppData*/
+
+# Node
+core/assets/node_modules/
+
+# Generated on crash/testing
+core/erl_crash.dump
+core/*.crashdump
+
+# Env/secrets
+.env
+*.pem
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Reference repos
+symphony/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

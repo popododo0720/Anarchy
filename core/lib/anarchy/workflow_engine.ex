@@ -1,0 +1,511 @@
+defmodule Anarchy.WorkflowEngine do
+  @moduledoc """
+  CE (Compound Engineering) loop state machine.
+
+  Manages the lifecycle of a single task through the CE workflow:
+    :idle → :planning → :plan_reviewing → :working → :ce_reviewing
+      → :code_reviewing → :compounding → :completed
+
+  Critical findings during review stages roll back to :working.
+  Plan review revisions roll back to :planning.
+  """
+
+  use GenStateMachine, callback_mode: [:handle_event_function, :state_enter]
+
+  require Logger
+
+  alias Anarchy.{RoleLoader, SessionManager}
+  alias Anarchy.Schemas.Task, as: TaskSchema
+
+  @type ce_state ::
+          :idle
+          | :planning
+          | :plan_reviewing
+          | :working
+          | :ce_reviewing
+          | :code_reviewing
+          | :compounding
+          | :completed
+          | :failed
+
+  defmodule Data do
+    @moduledoc false
+    defstruct [
+      :task,
+      :project_id,
+      :workspace_path,
+      :current_worker_pid,
+      :current_worker_ref,
+      :session_id,
+      :learnings,
+      :feedback,
+      :plan_output,
+      attempt: 0,
+      max_attempts: 3,
+      ce_review_results: [],
+      started_at: nil
+    ]
+  end
+
+  # --- Public API ---
+
+  @spec start_link(keyword()) :: GenServer.on_start()
+  def start_link(opts) do
+    task = Keyword.fetch!(opts, :task)
+    name = Keyword.get(opts, :name, via_name(task.id))
+    GenStateMachine.start_link(__MODULE__, opts, name: name)
+  end
+
+  @spec current_state(GenServer.server()) :: {ce_state(), Data.t()}
+  def current_state(server) do
+    GenStateMachine.call(server, :current_state)
+  end
+
+  @spec trigger(GenServer.server(), atom()) :: :ok
+  def trigger(server, event) do
+    GenStateMachine.cast(server, event)
+  end
+
+  # --- Callbacks ---
+
+  @impl true
+  def init(opts) do
+    task = Keyword.fetch!(opts, :task)
+    workspace_path = Keyword.get(opts, :workspace_path)
+
+    data = %Data{
+      task: task,
+      project_id: task.project_id,
+      workspace_path: workspace_path,
+      started_at: DateTime.utc_now()
+    }
+
+    actions = [{:next_event, :internal, :start}]
+    {:ok, :idle, data, actions}
+  end
+
+  # --- State: :idle ---
+
+  @impl true
+  def handle_event(:enter, _old_state, :idle, _data) do
+    :keep_state_and_data
+  end
+
+  def handle_event(:internal, :start, :idle, data) do
+    Logger.info("CE loop starting for task_id=#{data.task.id} title=#{data.task.title}")
+    {:next_state, :planning, data}
+  end
+
+  # --- State: :planning ---
+
+  def handle_event(:enter, _old_state, :planning, data) do
+    Logger.info("CE loop entering :planning for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_plan}]}
+  end
+
+  def handle_event(:state_timeout, :run_plan, :planning, data) do
+    case spawn_role_worker(:developer, data, &plan_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start planning worker: #{inspect(reason)}")
+        {:next_state, :failed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, output}, :planning, data) do
+    {:next_state, :plan_reviewing, %{data | plan_output: output, current_worker_pid: nil, current_worker_ref: nil}}
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :planning, data) do
+    handle_worker_failure(data, :planning, reason)
+  end
+
+  # --- State: :plan_reviewing ---
+
+  def handle_event(:enter, _old_state, :plan_reviewing, data) do
+    Logger.info("CE loop entering :plan_reviewing for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_plan_review}]}
+  end
+
+  def handle_event(:state_timeout, :run_plan_review, :plan_reviewing, data) do
+    case spawn_role_worker(:plan_reviewer, data, &plan_review_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start plan review worker: #{inspect(reason)}")
+        {:next_state, :failed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, output}, :plan_reviewing, data) do
+    case classify_review_result(output) do
+      :approved ->
+        {:next_state, :working, %{data | current_worker_pid: nil, current_worker_ref: nil}}
+
+      :revision_needed ->
+        Logger.info("Plan review requested revision for task_id=#{data.task.id}")
+        {:next_state, :planning, %{data | feedback: output, current_worker_pid: nil, current_worker_ref: nil}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :plan_reviewing, data) do
+    handle_worker_failure(data, :plan_reviewing, reason)
+  end
+
+  # --- State: :working ---
+
+  def handle_event(:enter, _old_state, :working, data) do
+    Logger.info("CE loop entering :working for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_work}]}
+  end
+
+  def handle_event(:state_timeout, :run_work, :working, data) do
+    case spawn_role_worker(:developer, data, &work_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start work worker: #{inspect(reason)}")
+        {:next_state, :failed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, _output}, :working, data) do
+    {:next_state, :ce_reviewing, %{data | current_worker_pid: nil, current_worker_ref: nil}}
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :working, data) do
+    handle_worker_failure(data, :working, reason)
+  end
+
+  # --- State: :ce_reviewing ---
+
+  def handle_event(:enter, _old_state, :ce_reviewing, data) do
+    Logger.info("CE loop entering :ce_reviewing for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_ce_review}]}
+  end
+
+  def handle_event(:state_timeout, :run_ce_review, :ce_reviewing, data) do
+    case spawn_role_worker(:ce_reviewer, data, &ce_review_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start CE review worker: #{inspect(reason)}")
+        {:next_state, :failed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, output}, :ce_reviewing, data) do
+    case classify_review_result(output) do
+      :approved ->
+        {:next_state, :code_reviewing, %{data | ce_review_results: [output | data.ce_review_results], current_worker_pid: nil, current_worker_ref: nil}}
+
+      :revision_needed ->
+        Logger.info("CE review found critical issues for task_id=#{data.task.id}; rolling back to :working")
+        data = %{data | feedback: output, ce_review_results: [output | data.ce_review_results], current_worker_pid: nil, current_worker_ref: nil}
+        {:next_state, :working, data}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :ce_reviewing, data) do
+    handle_worker_failure(data, :ce_reviewing, reason)
+  end
+
+  # --- State: :code_reviewing ---
+
+  def handle_event(:enter, _old_state, :code_reviewing, data) do
+    Logger.info("CE loop entering :code_reviewing for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_code_review}]}
+  end
+
+  def handle_event(:state_timeout, :run_code_review, :code_reviewing, data) do
+    case spawn_role_worker(:code_reviewer, data, &code_review_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start code review worker: #{inspect(reason)}")
+        {:next_state, :failed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, output}, :code_reviewing, data) do
+    case classify_review_result(output) do
+      :approved ->
+        {:next_state, :compounding, %{data | current_worker_pid: nil, current_worker_ref: nil}}
+
+      :revision_needed ->
+        Logger.info("Code review found critical issues for task_id=#{data.task.id}; rolling back to :working")
+        {:next_state, :working, %{data | feedback: output, current_worker_pid: nil, current_worker_ref: nil}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :code_reviewing, data) do
+    handle_worker_failure(data, :code_reviewing, reason)
+  end
+
+  # --- State: :compounding ---
+
+  def handle_event(:enter, _old_state, :compounding, data) do
+    Logger.info("CE loop entering :compounding for task_id=#{data.task.id}")
+    {:keep_state_and_data, [{:state_timeout, 0, :run_compound}]}
+  end
+
+  def handle_event(:state_timeout, :run_compound, :compounding, data) do
+    case spawn_role_worker(:developer, data, &compound_prompt/1) do
+      {:ok, pid, ref, session_id} ->
+        {:keep_state, %{data | current_worker_pid: pid, current_worker_ref: ref, session_id: session_id}}
+
+      {:error, reason} ->
+        Logger.error("Failed to start compound worker: #{inspect(reason)}")
+        {:next_state, :completed, %{data | feedback: reason}}
+    end
+  end
+
+  def handle_event(:info, {:worker_complete, :normal, output}, :compounding, data) do
+    Logger.info("CE loop completed for task_id=#{data.task.id}")
+    {:next_state, :completed, %{data | learnings: output, current_worker_pid: nil, current_worker_ref: nil}}
+  end
+
+  def handle_event(:info, {:worker_complete, reason, _output}, :compounding, data) do
+    Logger.warning("Compound step failed for task_id=#{data.task.id}: #{inspect(reason)}; marking completed anyway")
+    {:next_state, :completed, %{data | current_worker_pid: nil, current_worker_ref: nil}}
+  end
+
+  # --- State: :completed ---
+
+  def handle_event(:enter, _old_state, :completed, data) do
+    Logger.info("CE loop completed for task_id=#{data.task.id}")
+    update_task_status(data.task, :completed)
+    :keep_state_and_data
+  end
+
+  # --- State: :failed ---
+
+  def handle_event(:enter, _old_state, :failed, data) do
+    Logger.error("CE loop failed for task_id=#{data.task.id}: #{inspect(data.feedback)}")
+    update_task_status(data.task, :failed)
+    :keep_state_and_data
+  end
+
+  # --- Common handlers ---
+
+  def handle_event({:call, from}, :current_state, state, data) do
+    {:keep_state_and_data, [{:reply, from, {state, data}}]}
+  end
+
+  def handle_event(:cast, :cancel, _state, data) do
+    if data.current_worker_pid && Process.alive?(data.current_worker_pid) do
+      Process.exit(data.current_worker_pid, :shutdown)
+    end
+
+    {:next_state, :failed, %{data | feedback: :cancelled}}
+  end
+
+  def handle_event(:info, {:DOWN, ref, :process, _pid, reason}, _state, %{current_worker_ref: ref} = data) do
+    output = nil
+    send(self(), {:worker_complete, reason, output})
+    {:keep_state, data}
+  end
+
+  def handle_event(:info, {:DOWN, _ref, :process, _pid, _reason}, _state, _data) do
+    :keep_state_and_data
+  end
+
+  # Catch-all for unexpected events
+  def handle_event(event_type, event_content, state, _data) do
+    Logger.debug("WorkflowEngine ignoring #{inspect(event_type)} #{inspect(event_content)} in state #{state}")
+    :keep_state_and_data
+  end
+
+  # --- Private helpers ---
+
+  defp spawn_role_worker(role, data, prompt_fn) do
+    caller = self()
+
+    {pid, ref} =
+      spawn_monitor(fn ->
+        result =
+          try do
+            prompt = prompt_fn.(data)
+            RoleLoader.execute_role(role, data.task, data.workspace_path, prompt)
+          catch
+            kind, reason -> {:error, {kind, reason}}
+          end
+
+        send(caller, {:worker_complete, :normal, result})
+      end)
+
+    session_id = "ce-#{data.task.id}-#{role}-#{System.unique_integer([:positive])}"
+
+    SessionManager.create_session(%{
+      task_id: data.task.id,
+      project_id: data.project_id,
+      agent_type: RoleLoader.runtime_name(role),
+      session_id: session_id,
+      role_prompt_path: RoleLoader.role_path(role),
+      workspace_path: data.workspace_path,
+      status: "active"
+    })
+
+    {:ok, pid, ref, session_id}
+  rescue
+    error -> {:error, error}
+  end
+
+  defp handle_worker_failure(data, state, reason) do
+    data = %{data | attempt: data.attempt + 1, current_worker_pid: nil, current_worker_ref: nil}
+
+    if data.attempt >= data.max_attempts do
+      Logger.error("CE loop max attempts reached for task_id=#{data.task.id} in state #{state}")
+      {:next_state, :failed, %{data | feedback: reason}}
+    else
+      Logger.warning("CE loop worker failed for task_id=#{data.task.id} in #{state}: #{inspect(reason)}; retrying (attempt #{data.attempt})")
+      {:repeat_state, data}
+    end
+  end
+
+  defp classify_review_result(output) when is_binary(output) do
+    lower = String.downcase(output)
+
+    cond do
+      String.contains?(lower, "critical") -> :revision_needed
+      String.contains?(lower, "revision") -> :revision_needed
+      String.contains?(lower, "reject") -> :revision_needed
+      true -> :approved
+    end
+  end
+
+  defp classify_review_result(_output), do: :approved
+
+  defp update_task_status(%TaskSchema{id: task_id}, status) when is_atom(status) do
+    Anarchy.Tracker.update_task_state(task_id, Atom.to_string(status))
+  rescue
+    _ -> :ok
+  end
+
+  defp update_task_status(_task, _status), do: :ok
+
+  defp via_name(task_id), do: {:global, {__MODULE__, task_id}}
+
+  # --- Prompt builders ---
+
+  defp plan_prompt(data) do
+    feedback_section =
+      if data.feedback do
+        "\n\nPrevious feedback to address:\n#{inspect(data.feedback)}"
+      else
+        ""
+      end
+
+    learnings_section =
+      if data.learnings do
+        "\n\nLearnings from previous tasks:\n#{data.learnings}"
+      else
+        ""
+      end
+
+    """
+    Create an implementation plan for the following task.
+
+    Task: #{data.task.title}
+    Description: #{data.task.description || "No description provided."}
+    #{feedback_section}#{learnings_section}
+
+    Output a structured plan with:
+    1. Step-by-step implementation approach
+    2. Files to create or modify
+    3. Key design decisions
+    4. Test strategy
+    """
+  end
+
+  defp plan_review_prompt(data) do
+    """
+    Review this implementation plan for structural soundness and direction.
+    This is a lightweight review — do NOT review code.
+
+    Task: #{data.task.title}
+    Plan: #{inspect(data.plan_output)}
+
+    Check:
+    - Is the approach reasonable?
+    - Are there missing steps?
+    - Are there architectural concerns?
+
+    Respond with APPROVED if acceptable, or describe revisions needed.
+    """
+  end
+
+  defp work_prompt(data) do
+    feedback_section =
+      if data.feedback do
+        "\n\nReview feedback to address:\n#{inspect(data.feedback)}"
+      else
+        ""
+      end
+
+    """
+    Implement the following task according to the plan.
+
+    Task: #{data.task.title}
+    Description: #{data.task.description || "No description provided."}
+    Plan: #{inspect(data.plan_output)}
+    #{feedback_section}
+    """
+  end
+
+  defp ce_review_prompt(data) do
+    """
+    Perform a Compound Engineering review of the recent changes.
+
+    Task: #{data.task.title}
+
+    Review for:
+    1. Security vulnerabilities (auth, input validation, injection)
+    2. Performance issues (N+1 queries, unnecessary allocations, O(n²))
+    3. Architecture compliance (design principles, separation of concerns)
+
+    If any CRITICAL issues found, respond with "CRITICAL:" followed by the issues.
+    If only minor issues, respond with "APPROVED" and list suggestions.
+    """
+  end
+
+  defp code_review_prompt(data) do
+    """
+    Final code review for the following task.
+
+    Task: #{data.task.title}
+
+    Review for:
+    1. Code correctness
+    2. Test coverage
+    3. Documentation
+    4. Style consistency
+
+    If any CRITICAL issues found, respond with "CRITICAL:" followed by the issues.
+    If acceptable, respond with "APPROVED".
+    """
+  end
+
+  defp compound_prompt(data) do
+    """
+    Document what was learned from implementing this task.
+
+    Task: #{data.task.title}
+    CE Review Results: #{inspect(data.ce_review_results)}
+
+    Write a concise learning document covering:
+    1. Key decisions made and why
+    2. Problems encountered and solutions
+    3. Patterns to reuse or avoid
+    4. Recommendations for similar future work
+
+    Save to docs/solutions/ in the workspace.
+    """
+  end
+end
