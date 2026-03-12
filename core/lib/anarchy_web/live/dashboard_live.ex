@@ -251,6 +251,8 @@ defmodule AnarchyWeb.DashboardLive do
 
   defp load_payload do
     Presenter.state_payload(orchestrator(), snapshot_timeout_ms())
+  rescue
+    _ -> %{error: %{code: "load_error", message: "Failed to load dashboard data"}}
   end
 
   defp orchestrator do

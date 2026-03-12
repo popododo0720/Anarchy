@@ -64,6 +64,18 @@ defmodule Anarchy.Codex.AppServer do
     end
   end
 
+  def start_session(%{workspace: workspace} = opts) do
+    case start_session(workspace) do
+      {:ok, session} ->
+        session_id = session.thread_id
+        pid = spawn_link(fn -> session_holder(session, opts) end)
+        {:ok, session_id, pid}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @impl Anarchy.Runtime.AgentProtocol
   def run_once(_opts), do: {:error, :not_supported}
 
@@ -76,18 +88,6 @@ defmodule Anarchy.Codex.AppServer do
   def send_message(pid, prompt) do
     send(pid, {:send_prompt, prompt})
     :ok
-  end
-
-  def start_session(%{workspace: workspace} = opts) do
-    case start_session(workspace) do
-      {:ok, session} ->
-        session_id = session.thread_id
-        pid = spawn_link(fn -> session_holder(session, opts) end)
-        {:ok, session_id, pid}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
   end
 
   @spec run_turn(session(), String.t(), map(), keyword()) :: {:ok, map()} | {:error, term()}
