@@ -165,17 +165,15 @@ defmodule AnarchyWeb.ProjectDetailLive do
 
     case Projects.confirm_design(design) do
       {:ok, confirmed_design} ->
-        # Auto-decompose on confirm
-        case PMAgent.decompose(confirmed_design) do
-          {:ok, _tasks} ->
+        # Async decompose — results arrive via PubSub
+        case PMAgent.decompose_async(confirmed_design) do
+          {:ok, _pid} ->
             designs = Projects.list_designs(socket.assigns.project.id)
-            tasks = Projects.list_tasks(socket.assigns.project.id)
-            stats = Projects.project_stats(socket.assigns.project.id)
 
             {:noreply,
              socket
-             |> assign(designs: designs, tasks: tasks, stats: stats, tab: "tasks")
-             |> put_flash(:info, "Design confirmed and decomposed into tasks")}
+             |> assign(designs: designs)
+             |> put_flash(:info, "Design confirmed — decomposing into tasks...")}
 
           {:error, _reason} ->
             designs = Projects.list_designs(socket.assigns.project.id)
@@ -190,18 +188,30 @@ defmodule AnarchyWeb.ProjectDetailLive do
   def handle_event("decompose_design", %{"id" => id}, socket) do
     design = Projects.get_design!(id)
 
-    case PMAgent.decompose(design) do
-      {:ok, _tasks} ->
-        tasks = Projects.list_tasks(socket.assigns.project.id)
-        stats = Projects.project_stats(socket.assigns.project.id)
-        {:noreply, assign(socket, tasks: tasks, stats: stats, tab: "tasks")}
+    case PMAgent.decompose_async(design) do
+      {:ok, _pid} ->
+        {:noreply, put_flash(socket, :info, "Decomposing design into tasks...")}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Decomposition failed: #{inspect(reason)}")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Decomposition failed. Check server logs.")}
     end
   end
 
   @impl true
+  def handle_info({:tasks_created, _design_id, _tasks}, socket) do
+    tasks = Projects.list_tasks(socket.assigns.project.id)
+    stats = Projects.project_stats(socket.assigns.project.id)
+
+    {:noreply,
+     socket
+     |> assign(tasks: tasks, stats: stats, tab: "tasks")
+     |> put_flash(:info, "Tasks created from design")}
+  end
+
+  def handle_info({:pm_error, _design_id, _reason}, socket) do
+    {:noreply, put_flash(socket, :error, "PM decomposition failed")}
+  end
+
   def handle_info({:task_status_changed, _task_id, _new_status}, socket) do
     tasks = Projects.list_tasks(socket.assigns.project.id)
     stats = Projects.project_stats(socket.assigns.project.id)

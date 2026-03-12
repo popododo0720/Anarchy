@@ -9,6 +9,10 @@ defmodule Anarchy.Orchestrator do
 
   alias Anarchy.{AgentRunner, Config, StatusDashboard, Tracker, Workspace}
   alias Anarchy.Schemas.Task, as: TaskSchema
+  alias Anarchy.Workers.CELoopWorker
+
+  # Roles that go through the CE loop (WorkflowEngine via Oban)
+  @ce_loop_roles ~w(developer senior_developer qa_engineer)
 
   @continuation_retry_delay_ms 1_000
   @failure_retry_base_ms 10_000
@@ -601,7 +605,10 @@ defmodule Anarchy.Orchestrator do
   defp dispatch_task(%State{} = state, task, attempt \\ nil) do
     case revalidate_task_for_dispatch(task, &Tracker.fetch_task_states_by_ids/1, terminal_state_set()) do
       {:ok, %TaskSchema{} = refreshed_task} ->
-        do_dispatch_task(state, refreshed_task, attempt)
+        case dispatch_mode(refreshed_task.role) do
+          :ce_loop -> dispatch_ce_loop(state, refreshed_task)
+          :direct -> do_dispatch_task(state, refreshed_task, attempt)
+        end
 
       {:skip, :missing} ->
         Logger.info("Skipping dispatch; task no longer active or visible: #{task_context(task)}")
@@ -614,6 +621,25 @@ defmodule Anarchy.Orchestrator do
 
       {:error, reason} ->
         Logger.warning("Skipping dispatch; task refresh failed for #{task_context(task)}: #{inspect(reason)}")
+        state
+    end
+  end
+
+  # CE loop roles go through WorkflowEngine via Oban. Review roles are dispatched
+  # by the WorkflowEngine itself, not directly by the Orchestrator.
+  defp dispatch_mode(role) when is_binary(role) and role in @ce_loop_roles, do: :ce_loop
+  defp dispatch_mode(_role), do: :direct
+
+  defp dispatch_ce_loop(%State{} = state, task) do
+    case CELoopWorker.enqueue(task.id, task.project_id) do
+      {:ok, _job} ->
+        Logger.info("Enqueued CE loop for #{task_context(task)}")
+        # Add to claimed to prevent re-dispatch on next poll tick.
+        # CE loop tasks are NOT in the running map — Oban owns their lifecycle.
+        %{state | claimed: MapSet.put(state.claimed, task.id)}
+
+      {:error, reason} ->
+        Logger.warning("Failed to enqueue CE loop for #{task_context(task)}: #{inspect(reason)}")
         state
     end
   end

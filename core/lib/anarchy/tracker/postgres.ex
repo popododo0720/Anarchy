@@ -71,18 +71,26 @@ defmodule Anarchy.Tracker.Postgres do
         {:error, :not_found}
 
       task ->
-        task
-        |> Ecto.Changeset.change(status: to_existing_atom(new_state))
-        |> Repo.update()
+        case task |> Ecto.Changeset.change(status: to_existing_atom(new_state)) |> Repo.update() do
+          {:ok, updated_task} ->
+            Phoenix.PubSub.broadcast(Anarchy.PubSub, "task:#{task_id}", {:task_updated, updated_task})
+            Phoenix.PubSub.broadcast(Anarchy.PubSub, "project:#{task.project_id}", {:task_status_changed, task_id, updated_task.status})
+            {:ok, updated_task}
+
+          error ->
+            error
+        end
     end
   end
 
   @valid_statuses ~w(pending assigned planning plan_reviewing working ce_reviewing code_reviewing compounding completed failed)a
+  @status_lookup Map.new(@valid_statuses, fn a -> {Atom.to_string(a), a} end)
 
-  defp to_existing_atom(value) when is_atom(value), do: value
+  defp to_existing_atom(value) when is_atom(value) do
+    if value in @valid_statuses, do: value, else: nil
+  end
 
   defp to_existing_atom(value) when is_binary(value) do
-    atom = String.downcase(value) |> String.to_atom()
-    if atom in @valid_statuses, do: atom, else: nil
+    Map.get(@status_lookup, String.downcase(value))
   end
 end

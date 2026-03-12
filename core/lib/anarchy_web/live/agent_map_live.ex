@@ -9,7 +9,6 @@ defmodule AnarchyWeb.AgentMapLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Anarchy.PubSub, "project:#{project_id}")
-      Phoenix.PubSub.subscribe(Anarchy.PubSub, "agents:#{project_id}")
       Phoenix.PubSub.subscribe(Anarchy.PubSub, "mail:project:#{project_id}")
     end
 
@@ -144,12 +143,16 @@ defmodule AnarchyWeb.AgentMapLive do
 
   @impl true
   def handle_event("select_agent", %{"session-id" => session_id}, socket) do
-    if connected?(socket) do
-      Phoenix.PubSub.subscribe(Anarchy.PubSub, "agent:#{session_id}")
+    # Unsubscribe from previous agent topic to prevent subscription leak
+    if socket.assigns[:subscribed_agent_topic] do
+      Phoenix.PubSub.unsubscribe(Anarchy.PubSub, socket.assigns.subscribed_agent_topic)
     end
 
+    topic = "agent:#{session_id}"
+    Phoenix.PubSub.subscribe(Anarchy.PubSub, topic)
+
     mails = AgentMail.inbox(session_id, project_id: socket.assigns.project.id)
-    {:noreply, assign(socket, selected_agent: session_id, agent_output: [], agent_mails: mails)}
+    {:noreply, assign(socket, selected_agent: session_id, agent_output: [], agent_mails: mails, subscribed_agent_topic: "agent:#{session_id}")}
   end
 
   def handle_event("pause_agent", %{"session-id" => sid}, socket) do

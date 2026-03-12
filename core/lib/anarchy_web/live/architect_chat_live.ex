@@ -1,43 +1,37 @@
 defmodule AnarchyWeb.ArchitectChatLive do
   @moduledoc """
   Architect Chat UI — the owner talks to the Architect agent to create designs.
-  Messages are streamed in real-time via PubSub.
+  Uses ClaudeCode interactive sessions with real-time streaming via PubSub.
   """
 
   use Phoenix.LiveView
 
   alias Anarchy.{Projects, RoleLoader, SessionManager}
+  alias Anarchy.Runtime.ClaudeCode
   require Logger
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
     project = Projects.get_project!(project_id)
 
+    socket =
+      assign(socket,
+        page_title: "Architect Chat — #{project.name}",
+        project: project,
+        messages: [],
+        input: "",
+        streaming: false,
+        stream_buffer: "",
+        session_id: nil,
+        claude_pid: nil
+      )
+
     if connected?(socket) do
-      Phoenix.PubSub.subscribe(Anarchy.PubSub, "architect:#{project_id}")
+      socket = start_architect_session(socket, project)
+      {:ok, socket}
+    else
+      {:ok, socket}
     end
-
-    session_id = "architect-#{project_id}-#{System.unique_integer([:positive])}"
-
-    if connected?(socket) do
-      SessionManager.create_session(%{
-        project_id: project_id,
-        agent_type: "claude_code",
-        session_id: session_id,
-        status: "active"
-      })
-    end
-
-    {:ok,
-     assign(socket,
-       page_title: "Architect Chat — #{project.name}",
-       project: project,
-       messages: [],
-       input: "",
-       streaming: false,
-       session_id: session_id,
-       worker_pid: nil
-     )}
   end
 
   @impl true
@@ -64,7 +58,13 @@ defmodule AnarchyWeb.ArchitectChatLive do
           <%= if @streaming do %>
             <div class="chat-message chat-assistant streaming">
               <div class="chat-role">architect</div>
-              <div class="chat-content"><span class="typing-indicator">...</span></div>
+              <div class="chat-content">
+                <%= if @stream_buffer != "" do %>
+                  <pre><%= @stream_buffer %></pre>
+                <% else %>
+                  <span class="typing-indicator">...</span>
+                <% end %>
+              </div>
             </div>
           <% end %>
 
@@ -106,28 +106,24 @@ defmodule AnarchyWeb.ArchitectChatLive do
   def handle_event("send_message", %{"message" => message}, socket) when message != "" do
     messages = socket.assigns.messages ++ [%{role: "user", content: message}]
 
-    # Start architect agent in background
-    project = socket.assigns.project
-    caller = self()
+    socket =
+      if socket.assigns.claude_pid && Process.alive?(socket.assigns.claude_pid) do
+        # Send to existing interactive session
+        ClaudeCode.send_message(socket.assigns.claude_pid, message)
+        assign(socket, messages: messages, input: "", streaming: true, stream_buffer: "")
+      else
+        # Session died or not started — start fresh and send first message
+        socket = assign(socket, messages: messages, input: "", streaming: true, stream_buffer: "")
+        socket = start_architect_session(socket, socket.assigns.project)
 
-    pid =
-      spawn(fn ->
-        try do
-          response = run_architect(project, message)
-          send(caller, {:architect_response, response})
-        rescue
-          error ->
-            send(caller, {:architect_response, "Error: #{Exception.message(error)}"})
+        if socket.assigns.claude_pid do
+          ClaudeCode.send_message(socket.assigns.claude_pid, message)
         end
-      end)
 
-    {:noreply,
-     assign(socket,
-       messages: messages,
-       input: "",
-       streaming: true,
-       worker_pid: pid
-     )}
+        socket
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("send_message", _params, socket), do: {:noreply, socket}
@@ -136,7 +132,6 @@ defmodule AnarchyWeb.ArchitectChatLive do
     messages = socket.assigns.messages
     project = socket.assigns.project
 
-    # Combine all assistant messages as design content
     content =
       messages
       |> Enum.filter(&(&1.role == "architect"))
@@ -163,24 +158,46 @@ defmodule AnarchyWeb.ArchitectChatLive do
   end
 
   def handle_event("clear_chat", _params, socket) do
-    {:noreply, assign(socket, messages: [], streaming: false)}
+    {:noreply, assign(socket, messages: [], streaming: false, stream_buffer: "")}
   end
 
+  # Streaming: "result" type message completes the response (specific clause FIRST)
   @impl true
-  def handle_info({:architect_response, response}, socket) do
-    messages = socket.assigns.messages ++ [%{role: "architect", content: response}]
-    {:noreply, assign(socket, messages: messages, streaming: false, worker_pid: nil)}
+  def handle_info({:agent_output, _sid, %{"type" => "result", "result" => text}}, socket) when is_binary(text) do
+    final_text = socket.assigns.stream_buffer <> text
+    messages = socket.assigns.messages ++ [%{role: "architect", content: final_text}]
+    {:noreply, assign(socket, messages: messages, streaming: false, stream_buffer: "")}
   end
 
-  def handle_info({:architect_stream, chunk}, socket) do
-    # For streaming partial responses
-    {:noreply, assign(socket, streaming_content: (socket.assigns[:streaming_content] || "") <> chunk)}
+  def handle_info({:agent_output, _sid, %{"type" => "result"}}, socket) do
+    # Result without text — use accumulated buffer
+    final_text = socket.assigns.stream_buffer
+
+    if final_text != "" do
+      messages = socket.assigns.messages ++ [%{role: "architect", content: final_text}]
+      {:noreply, assign(socket, messages: messages, streaming: false, stream_buffer: "")}
+    else
+      {:noreply, assign(socket, streaming: false)}
+    end
+  end
+
+  # Streaming: accumulate text chunks from assistant messages
+  def handle_info({:agent_output, _sid, msg}, socket) do
+    case extract_text_chunk(msg) do
+      nil -> {:noreply, socket}
+      chunk -> {:noreply, assign(socket, stream_buffer: socket.assigns.stream_buffer <> chunk)}
+    end
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def terminate(_reason, socket) do
+    # Stop the Claude CLI process to prevent orphans
+    if socket.assigns[:claude_pid] && Process.alive?(socket.assigns.claude_pid) do
+      ClaudeCode.stop_session(socket.assigns.claude_pid)
+    end
+
     if socket.assigns[:session_id] do
       SessionManager.complete_session(socket.assigns.session_id)
     end
@@ -190,48 +207,75 @@ defmodule AnarchyWeb.ArchitectChatLive do
 
   # --- Private ---
 
-  defp run_architect(project, message) do
-    case RoleLoader.load(:architect) do
-      {:ok, system_prompt} ->
-        prompt = """
-        Project: #{project.name}
-        #{if project.description, do: "Description: #{project.description}", else: ""}
+  # Max concurrent interactive sessions per project
+  @max_interactive_sessions 3
 
-        User message: #{message}
+  defp start_architect_session(socket, project) do
+    active_count =
+      try do
+        Projects.list_sessions(project.id)
+        |> Enum.count(fn s -> s.status == "active" and s.agent_type == "claude_code" end)
+      rescue
+        _ -> 0
+      end
 
-        Respond as the project Architect. Provide concrete architectural guidance,
-        design decisions, and technical recommendations. Be specific and actionable.
-        """
-
-        try do
-          result = RoleLoader.execute_role(:architect, %{id: project.id, title: project.name}, nil, prompt)
-          extract_response_text(result, system_prompt)
-        rescue
-          error ->
-            Logger.warning("Architect agent failed, falling back: #{Exception.message(error)}")
-            fallback_response(project, message)
-        end
-
-      {:error, _reason} ->
-        "Architect role prompt not available. Please ensure priv/agency-agents/engineering/architect.md exists."
+    if active_count >= @max_interactive_sessions do
+      Logger.warning("Interactive session limit reached for project_id=#{project.id}")
+      assign(socket, session_id: nil, claude_pid: nil)
+    else
+      do_start_architect_session(socket, project)
     end
   end
 
-  defp extract_response_text({:ok, text}, _) when is_binary(text), do: text
-  defp extract_response_text({:error, reason}, _), do: "Architect agent error: #{inspect(reason)}"
-  defp extract_response_text(result, _system_prompt) when is_binary(result), do: result
-  defp extract_response_text(%{"output" => text}, _) when is_binary(text), do: text
-  defp extract_response_text(%{output: text}, _) when is_binary(text), do: text
-  defp extract_response_text(:ok, _), do: "Architect agent completed but returned no text output."
-  defp extract_response_text(other, _), do: "Architect response: #{inspect(other)}"
+  defp do_start_architect_session(socket, project) do
+    system_prompt =
+      case RoleLoader.load(:architect) do
+        {:ok, content} -> content
+        {:error, _} -> nil
+      end
 
-  defp fallback_response(project, message) do
-    "I've analyzed your request for project '#{project.name}'.\n\n" <>
-      "Input: #{message}\n\n" <>
-      "Note: The Architect agent (Claude Code) is not available in this environment. " <>
-      "Install Claude Code CLI to enable real-time architectural guidance. " <>
-      "You can still save this conversation as a design document."
+    try do
+      {:ok, session_id, pid} =
+        ClaudeCode.start_interactive(
+          model: RoleLoader.model_for(:architect),
+          system_prompt: system_prompt,
+          workspace_path: nil
+        )
+
+      Phoenix.PubSub.subscribe(Anarchy.PubSub, "agent:#{session_id}")
+
+      SessionManager.create_session(%{
+        project_id: project.id,
+        agent_type: "claude_code",
+        session_id: session_id,
+        status: "active"
+      })
+
+      assign(socket, session_id: session_id, claude_pid: pid)
+    rescue
+      error ->
+        Logger.warning("Failed to start architect session: #{Exception.message(error)}")
+        socket
+    end
   end
+
+  defp extract_text_chunk(%{"type" => "assistant", "message" => %{"content" => content}}) when is_list(content) do
+    Enum.flat_map(content, fn
+      %{"type" => "text", "text" => text} when is_binary(text) -> [text]
+      _ -> []
+    end)
+    |> Enum.join("")
+    |> case do
+      "" -> nil
+      text -> text
+    end
+  end
+
+  defp extract_text_chunk(%{"type" => "content_block_delta", "delta" => %{"text" => text}}) when is_binary(text) do
+    text
+  end
+
+  defp extract_text_chunk(_msg), do: nil
 
   defp extract_title(messages) do
     case Enum.find(messages, &(&1.role == "user")) do

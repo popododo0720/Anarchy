@@ -48,3 +48,25 @@ Date: 2026-03-12
 4. **파일명에 user input 금지** — task.id 같은 외부 데이터가 파일명에 들어가면 path traversal 위험. regex sanitize 필수.
 5. **fail-closed default** — 리뷰 결과가 파싱 불가능하면 `:revision_needed` 반환. `:ok`나 nil도 동일 처리.
 6. **O(n) buffer 패턴** — stream parsing에서 `remaining <> new_data`만 파싱하고, 전체 history를 re-parse하지 않음. `collect_output`의 `remaining` 패턴이 정답.
+
+## Code Review 추가 수정
+
+### CRITICAL — @behaviour/@impl 누락
+- `ClaudeCode`에 `@behaviour AgentProtocol` 미선언 → 컴파일러 callback 검증 불가
+- `handle_info` exit_status clause, 두 번째 `terminate` clause에 `@impl GenServer` 누락
+- 5개 protocol function에 `@impl AgentProtocol` 추가
+
+### HIGH — DOWN handler double-fire
+- `spawn_role_worker`의 worker가 `{:worker_complete, ...}` 전송 후 종료 → DOWN + worker_complete 이중 수신
+- `demonitor_worker/1` helper: `Process.demonitor(ref, [:flush])` — 모든 `:worker_complete` handler에서 호출
+- `:flush` 옵션이 이미 큐에 있는 DOWN 메시지도 제거
+
+### CRITICAL — 호출자 미갱신 (PMAgent, ArchitectChatLive)
+- `RoleLoader.execute_role/4`가 Claude Code path에서 `{:ok, text}` 반환하도록 변경됐으나, PMAgent와 ArchitectChatLive는 plain string만 처리
+- PMAgent: `parse_agent_output({:ok, text})` clause 추가
+- ArchitectChatLive: `extract_response_text({:ok, text}, _)` clause 추가
+
+### 교훈
+7. **@behaviour 선언 필수** — 컴파일 타임에 callback 누락/타입 불일치를 잡을 수 있음
+8. **spawn_monitor + message = demonitor 필수** — worker가 직접 메시지를 보내는 패턴에서 DOWN과 이중 수신 방지
+9. **return type 변경 시 모든 호출자 확인** — `execute_role/4`의 반환타입이 바뀌면 직접 호출하는 모든 모듈 검토 필수

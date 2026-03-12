@@ -8,7 +8,7 @@ defmodule Anarchy.PMAgent do
 
   require Logger
 
-  alias Anarchy.{Projects, RoleLoader}
+  alias Anarchy.{Projects, Repo, RoleLoader}
   alias Anarchy.Schemas.Design
 
   @spec decompose(%Design{}) :: {:ok, [map()]} | {:error, term()}
@@ -31,23 +31,38 @@ defmodule Anarchy.PMAgent do
     {:error, {:design_not_confirmed, status}}
   end
 
-  @spec decompose_with_agent(%Design{}) :: {:ok, [map()]} | {:error, term()}
-  def decompose_with_agent(%Design{status: "confirmed"} = design) do
-    prompt = build_decomposition_prompt(design)
+  @doc "Async decomposition — runs in supervised task, broadcasts result via PubSub."
+  @spec decompose_async(%Design{}) :: {:ok, pid()} | {:error, term()}
+  def decompose_async(%Design{status: "confirmed"} = design) do
+    project_id = design.project_id
 
-    try do
-      result = RoleLoader.execute_role(:pm, %{}, nil, prompt)
-      task_specs = parse_agent_output(result)
-      tasks = create_tasks_from_specs(design, task_specs)
-      {:ok, tasks}
-    rescue
-      error ->
-        Logger.error("PM agent runtime error: #{Exception.message(error)}")
-        {:error, {:agent_error, Exception.message(error)}}
-    end
+    Task.Supervisor.start_child(Anarchy.TaskSupervisor, fn ->
+      prompt = build_decomposition_prompt(design)
+
+      # LLM call OUTSIDE transaction to avoid holding DB connection for minutes
+      result =
+        case RoleLoader.execute_role(:pm, %{}, nil, prompt) do
+          {:ok, text} ->
+            task_specs = parse_agent_output(text)
+            # Only DB writes inside transaction
+            Repo.transaction(fn -> create_tasks_from_specs(design, task_specs) end)
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      case result do
+        {:ok, tasks} ->
+          Phoenix.PubSub.broadcast(Anarchy.PubSub, "project:#{project_id}", {:tasks_created, design.id, tasks})
+
+        {:error, reason} ->
+          Logger.error("Async decompose failed for design_id=#{design.id}: #{inspect(reason)}")
+          Phoenix.PubSub.broadcast(Anarchy.PubSub, "project:#{project_id}", {:pm_error, design.id, reason})
+      end
+    end)
   end
 
-  def decompose_with_agent(%Design{status: status}) do
+  def decompose_async(%Design{status: status}) do
     {:error, {:design_not_confirmed, status}}
   end
 
@@ -218,7 +233,12 @@ defmodule Anarchy.PMAgent do
           Map.put(acc, :role, String.trim(String.trim_leading(line, "ROLE:")))
 
         String.starts_with?(line, "PRIORITY:") ->
-          priority = line |> String.trim_leading("PRIORITY:") |> String.trim() |> String.to_integer()
+          priority =
+            case line |> String.trim_leading("PRIORITY:") |> String.trim() |> Integer.parse() do
+              {n, _} -> n
+              :error -> 5
+            end
+
           Map.put(acc, :priority, priority)
 
         String.starts_with?(line, "DESCRIPTION:") ->
