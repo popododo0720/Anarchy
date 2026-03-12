@@ -179,6 +179,7 @@ defmodule Anarchy.Codex.AppServer do
     {:error, :not_supported}
   end
 
+  @spec send_prompt(pid(), String.t()) :: :ok
   def send_prompt(pid, prompt) do
     send(pid, {:send_prompt, prompt})
     :ok

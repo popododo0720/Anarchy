@@ -14,6 +14,7 @@ defmodule AnarchyWeb.Components.CEProgress do
 
   attr :current_state, :atom, required: true
 
+  @spec ce_progress(map()) :: Phoenix.LiveView.Rendered.t()
   def ce_progress(assigns) do
     assigns = assign(assigns, :stages, @ce_stages)
 

@@ -8,7 +8,11 @@ defmodule AnarchyWeb.AuthController do
 
   alias Anarchy.Accounts
 
+  @spec login(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def login(conn, %{"username" => username, "password" => password}) do
+    # Lazy bootstrap — ensure admin exists on first login attempt
+    Accounts.ensure_admin!()
+
     case Accounts.authenticate(username, password) do
       {:ok, user} ->
         conn
@@ -23,6 +27,7 @@ defmodule AnarchyWeb.AuthController do
     end
   end
 
+  @spec logout(Plug.Conn.t(), map()) :: Plug.Conn.t()
   def logout(conn, _params) do
     conn
     |> configure_session(drop: true)

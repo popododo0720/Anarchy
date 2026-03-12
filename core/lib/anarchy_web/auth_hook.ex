@@ -9,6 +9,8 @@ defmodule AnarchyWeb.AuthHook do
 
   alias Anarchy.Accounts
 
+  @spec on_mount(atom(), map(), map(), Phoenix.LiveView.Socket.t()) ::
+          {:cont, Phoenix.LiveView.Socket.t()} | {:halt, Phoenix.LiveView.Socket.t()}
   def on_mount(:default, _params, session, socket) do
     case session["user_id"] do
       nil ->
