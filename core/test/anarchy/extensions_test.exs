@@ -53,7 +53,17 @@ defmodule Anarchy.ExtensionsTest do
       Application.put_env(:anarchy, AnarchyWeb.Endpoint, endpoint_config)
     end)
 
-    :ok
+    # Ensure a test user exists for authenticated routes
+    Anarchy.Accounts.ensure_admin!()
+    user = Anarchy.Accounts.get_user_by_username("admin")
+
+    {:ok, user: user}
+  end
+
+  # Build a conn with an authenticated session
+  defp build_authed_conn do
+    user = Anarchy.Accounts.get_user_by_username("admin")
+    build_conn() |> Plug.Test.init_test_session(%{user_id: user.id})
   end
 
   test "workflow store reloads changes, keeps last good workflow, and falls back when stopped" do
@@ -245,7 +255,8 @@ defmodule Anarchy.ExtensionsTest do
     assert json_response(get(build_conn(), "/api/v1/refresh"), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
 
-    assert json_response(post(build_conn(), "/", %{}), 405) ==
+    # POST / now hits the auth login route or falls through to not_found
+    assert json_response(post(build_conn(), "/api/v1/MT-NONEXIST", %{}), 405) ==
              %{"error" => %{"code" => "method_not_allowed", "message" => "Method not allowed"}}
 
     assert json_response(post(build_conn(), "/api/v1/MT-1", %{}), 405) ==
@@ -302,7 +313,7 @@ defmodule Anarchy.ExtensionsTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    html = html_response(get(build_conn(), "/"), 200)
+    html = html_response(get(build_authed_conn(), "/"), 200)
     assert html =~ "/dashboard.css"
     assert html =~ "/vendor/phoenix_html/phoenix_html.js"
     assert html =~ "/vendor/phoenix/phoenix.js"
@@ -346,7 +357,7 @@ defmodule Anarchy.ExtensionsTest do
 
     start_test_endpoint(orchestrator: orchestrator_name, snapshot_timeout_ms: 50)
 
-    {:ok, view, html} = live(build_conn(), "/")
+    {:ok, view, html} = live(build_authed_conn(), "/")
     assert html =~ "Operations Dashboard"
     assert html =~ "MT-HTTP"
     assert html =~ "MT-RETRY"
@@ -410,7 +421,7 @@ defmodule Anarchy.ExtensionsTest do
       snapshot_timeout_ms: 5
     )
 
-    {:ok, _view, html} = live(build_conn(), "/")
+    {:ok, _view, html} = live(build_authed_conn(), "/")
     assert html =~ "Snapshot unavailable"
     assert html =~ "snapshot_unavailable"
   end

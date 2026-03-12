@@ -54,6 +54,7 @@ defmodule AnarchyWeb.Layouts do
         <.link navigate="/projects">Projects</.link>
         <.link navigate="/agents">Agents</.link>
         <.link navigate="/learnings">Learnings</.link>
+        <a href="/auth/logout" class="nav-logout">Logout</a>
       </div>
     </nav>
     <main class="app-shell">

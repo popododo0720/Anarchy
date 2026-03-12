@@ -36,11 +36,20 @@ defmodule Anarchy.Application do
         Anarchy.SessionManager
       ] ++ endpoint_children() ++ runtime_children()
 
-    Supervisor.start_link(
-      children,
-      strategy: :one_for_one,
-      name: Anarchy.Supervisor
-    )
+    result =
+      Supervisor.start_link(
+        children,
+        strategy: :one_for_one,
+        name: Anarchy.Supervisor
+      )
+
+    # Bootstrap default admin account after Repo is up
+    case result do
+      {:ok, _pid} -> bootstrap_admin()
+      _ -> :ok
+    end
+
+    result
   end
 
   defp endpoint_children do
@@ -95,6 +104,15 @@ defmodule Anarchy.Application do
   defp headless_safe_policy?("never"), do: true
   defp headless_safe_policy?(%{"reject" => _}), do: true
   defp headless_safe_policy?(_), do: false
+
+  defp bootstrap_admin do
+    try do
+      Anarchy.Accounts.ensure_admin!()
+    rescue
+      error ->
+        Logger.warning("Admin bootstrap skipped: #{Exception.message(error)}")
+    end
+  end
 
   defp oban_config do
     Application.get_env(:anarchy, Oban, [])

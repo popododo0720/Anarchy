@@ -14,6 +14,7 @@ defmodule AnarchyWeb.Router do
     plug(:put_secure_browser_headers)
   end
 
+  # Static assets — no auth needed
   scope "/", AnarchyWeb do
     get("/dashboard.css", StaticAssetController, :dashboard_css)
     get("/vendor/phoenix_html/phoenix_html.js", StaticAssetController, :phoenix_html_js)
@@ -21,10 +22,25 @@ defmodule AnarchyWeb.Router do
     get("/vendor/phoenix_live_view/phoenix_live_view.js", StaticAssetController, :phoenix_live_view_js)
   end
 
+  # Public routes — login page + auth actions
   scope "/", AnarchyWeb do
     pipe_through(:browser)
 
-    live_session :default, layout: {AnarchyWeb.Layouts, :app} do
+    live_session :public, layout: {AnarchyWeb.Layouts, :root} do
+      live("/login", LoginLive, :login)
+    end
+
+    post("/auth/login", AuthController, :login)
+    get("/auth/logout", AuthController, :logout)
+  end
+
+  # Protected routes — require authenticated session
+  scope "/", AnarchyWeb do
+    pipe_through(:browser)
+
+    live_session :authenticated,
+      layout: {AnarchyWeb.Layouts, :app},
+      on_mount: [{AnarchyWeb.AuthHook, :default}] do
       live("/", DashboardLive, :index)
       live("/projects", ProjectListLive, :index)
       live("/projects/:id", ProjectDetailLive, :show)
@@ -37,10 +53,10 @@ defmodule AnarchyWeb.Router do
     end
   end
 
+  # API routes — no browser auth (separate concern)
   scope "/", AnarchyWeb do
     get("/api/v1/state", ObservabilityApiController, :state)
 
-    match(:*, "/", ObservabilityApiController, :method_not_allowed)
     match(:*, "/api/v1/state", ObservabilityApiController, :method_not_allowed)
     post("/api/v1/refresh", ObservabilityApiController, :refresh)
     match(:*, "/api/v1/refresh", ObservabilityApiController, :method_not_allowed)

@@ -47,7 +47,10 @@ defmodule Anarchy.MixProject do
           AnarchyWeb.StaticAssetController,
           AnarchyWeb.StaticAssets,
           AnarchyWeb.Router,
-          AnarchyWeb.Router.Helpers
+          AnarchyWeb.Router.Helpers,
+          AnarchyWeb.LoginLive,
+          AnarchyWeb.AuthController,
+          AnarchyWeb.AuthHook
         ]
       ],
       test_ignore_filters: [
@@ -90,6 +93,7 @@ defmodule Anarchy.MixProject do
       {:postgrex, "~> 0.19"},
       {:gen_state_machine, "~> 3.0"},
       {:oban, "~> 2.18"},
+      {:pbkdf2_elixir, "~> 2.0"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:dialyxir, "~> 1.4", only: [:dev], runtime: false}
     ]

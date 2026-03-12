@@ -634,3 +634,16 @@ textarea.input { resize: vertical; }
 .flash { padding: 0.75rem 1rem; margin: 0.75rem 1.5rem; border-radius: 6px; font-size: 0.85rem; cursor: pointer; }
 .flash-info { background: #dbeafe; color: #1e40af; }
 .flash-error { background: #fee2e2; color: #991b1b; }
+
+/* Login page */
+.login-container { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: #0f172a; }
+.login-card { background: #1e293b; padding: 2.5rem; border-radius: 12px; width: 100%; max-width: 380px; }
+.login-card h1 { color: #f1f5f9; margin: 0 0 0.25rem; font-size: 1.5rem; }
+.login-card .text-muted { color: #94a3b8; margin: 0 0 1.5rem; font-size: 0.85rem; }
+.login-form .form-group { margin-bottom: 1rem; }
+.login-form label { display: block; color: #cbd5e1; font-size: 0.8rem; margin-bottom: 0.25rem; }
+.login-form .input { width: 100%; box-sizing: border-box; }
+.btn-block { width: 100%; }
+
+/* Logout link in nav */
+.nav-logout { color: rgba(255,255,255,0.5) !important; margin-left: 1rem; font-size: 0.8rem; }
