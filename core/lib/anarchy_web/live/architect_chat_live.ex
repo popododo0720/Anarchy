@@ -217,6 +217,8 @@ defmodule AnarchyWeb.ArchitectChatLive do
     end
   end
 
+  defp extract_response_text({:ok, text}, _) when is_binary(text), do: text
+  defp extract_response_text({:error, reason}, _), do: "Architect agent error: #{inspect(reason)}"
   defp extract_response_text(result, _system_prompt) when is_binary(result), do: result
   defp extract_response_text(%{"output" => text}, _) when is_binary(text), do: text
   defp extract_response_text(%{output: text}, _) when is_binary(text), do: text

@@ -115,10 +115,12 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, output}, :planning, data) do
+    demonitor_worker(data)
     {:next_state, :plan_reviewing, %{data | plan_output: output, current_worker_pid: nil, current_worker_ref: nil}}
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :planning, data) do
+    demonitor_worker(data)
     handle_worker_failure(data, :planning, reason)
   end
 
@@ -141,6 +143,8 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, output}, :plan_reviewing, data) do
+    demonitor_worker(data)
+
     case classify_review_result(output) do
       :approved ->
         {:next_state, :working, %{data | current_worker_pid: nil, current_worker_ref: nil}}
@@ -152,6 +156,7 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :plan_reviewing, data) do
+    demonitor_worker(data)
     handle_worker_failure(data, :plan_reviewing, reason)
   end
 
@@ -174,10 +179,12 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, _output}, :working, data) do
+    demonitor_worker(data)
     {:next_state, :ce_reviewing, %{data | current_worker_pid: nil, current_worker_ref: nil}}
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :working, data) do
+    demonitor_worker(data)
     handle_worker_failure(data, :working, reason)
   end
 
@@ -200,6 +207,8 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, output}, :ce_reviewing, data) do
+    demonitor_worker(data)
+
     case classify_review_result(output) do
       :approved ->
         {:next_state, :code_reviewing, %{data | ce_review_results: [output | data.ce_review_results], current_worker_pid: nil, current_worker_ref: nil}}
@@ -213,6 +222,7 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :ce_reviewing, data) do
+    demonitor_worker(data)
     handle_worker_failure(data, :ce_reviewing, reason)
   end
 
@@ -235,6 +245,8 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, output}, :code_reviewing, data) do
+    demonitor_worker(data)
+
     case classify_review_result(output) do
       :approved ->
         {:next_state, :compounding, %{data | current_worker_pid: nil, current_worker_ref: nil}}
@@ -246,6 +258,7 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :code_reviewing, data) do
+    demonitor_worker(data)
     handle_worker_failure(data, :code_reviewing, reason)
   end
 
@@ -268,6 +281,7 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, :normal, output}, :compounding, data) do
+    demonitor_worker(data)
     Logger.info("CE loop completed for task_id=#{data.task.id}")
     learnings_text = extract_text(output)
     persist_learnings(data, learnings_text)
@@ -275,6 +289,7 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :compounding, data) do
+    demonitor_worker(data)
     Logger.warning("Compound step failed for task_id=#{data.task.id}: #{inspect(reason)}; marking completed anyway")
     {:next_state, :completed, %{data | current_worker_pid: nil, current_worker_ref: nil}}
   end
@@ -364,6 +379,12 @@ defmodule Anarchy.WorkflowEngine do
   rescue
     error -> {:error, error}
   end
+
+  defp demonitor_worker(%{current_worker_ref: ref}) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+  end
+
+  defp demonitor_worker(_data), do: :ok
 
   defp handle_worker_failure(data, state, reason) do
     data = %{data | attempt: data.attempt + 1, current_worker_pid: nil, current_worker_ref: nil}

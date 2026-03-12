@@ -8,6 +8,8 @@ defmodule Anarchy.Runtime.ClaudeCode do
   """
   use GenServer
 
+  @behaviour Anarchy.Runtime.AgentProtocol
+
   require Logger
 
   defstruct [:port, :session_id, :workspace_path, :on_message, :buffer]
@@ -18,6 +20,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
   One-shot Claude Code execution. Blocks the calling process until the Port exits.
   Returns `{:ok, text}` with the assistant's final output, or `{:error, reason}`.
   """
+  @impl Anarchy.Runtime.AgentProtocol
   @spec run_once(keyword()) :: {:ok, String.t()} | {:error, term()}
   def run_once(opts) do
     :ok = validate_run_once_opts(opts)
@@ -33,6 +36,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
 
   # --- Interactive session (GenServer-based) ---
 
+  @impl Anarchy.Runtime.AgentProtocol
   @doc "Start interactive Claude session (no -p). Returns {:ok, session_id, pid}."
   @spec start_interactive(keyword()) :: {:ok, String.t(), pid()}
   def start_interactive(opts) do
@@ -42,6 +46,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
     {:ok, session_id, pid}
   end
 
+  @impl Anarchy.Runtime.AgentProtocol
   @doc "Resume a previous interactive session via --resume."
   @spec resume_session(String.t(), keyword()) :: {:ok, pid()}
   def resume_session(session_id, opts \\ []) do
@@ -49,12 +54,14 @@ defmodule Anarchy.Runtime.ClaudeCode do
     {:ok, pid}
   end
 
+  @impl Anarchy.Runtime.AgentProtocol
   @doc "Send a message to an interactive session's stdin."
   @spec send_message(pid(), String.t()) :: :ok
   def send_message(pid, message) do
     GenServer.cast(pid, {:send_message, message})
   end
 
+  @impl Anarchy.Runtime.AgentProtocol
   @doc "Stop an interactive session."
   @spec stop_session(pid()) :: :ok
   def stop_session(pid) do
@@ -121,6 +128,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
     {:noreply, %{state | buffer: remaining}}
   end
 
+  @impl GenServer
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
     Logger.info("Claude Code exited with status #{status} for session #{state.session_id}")
     {:stop, :normal, %{state | port: nil}}
@@ -132,6 +140,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
     :ok
   end
 
+  @impl GenServer
   def terminate(_reason, _state), do: :ok
 
   # --- Private: run_once helpers ---
@@ -240,10 +249,15 @@ defmodule Anarchy.Runtime.ClaudeCode do
       end
     end
   rescue
-    _ -> :ok
+    error ->
+      Logger.warning("Failed to kill port process: #{inspect(error)}")
   end
 
   defp validate_run_once_opts(opts) do
+    unless Keyword.has_key?(opts, :prompt) and is_binary(opts[:prompt]) and opts[:prompt] != "" do
+      raise ArgumentError, ":prompt is required and must be a non-empty string"
+    end
+
     for {key, value} <- opts, key in [:prompt, :model, :system_prompt, :workspace_path], value != nil do
       str = to_string(value)
 

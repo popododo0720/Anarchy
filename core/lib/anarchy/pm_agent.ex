@@ -194,6 +194,9 @@ defmodule Anarchy.PMAgent do
     """
   end
 
+  defp parse_agent_output({:ok, text}) when is_binary(text), do: parse_agent_output(text)
+  defp parse_agent_output({:error, _reason}), do: []
+
   defp parse_agent_output(output) when is_binary(output) do
     output
     |> String.split("---", trim: true)
