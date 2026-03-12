@@ -104,7 +104,7 @@ defmodule Anarchy.MixProject do
       setup: ["deps.get"],
       build: ["escript.build"],
       lint: ["specs.check", "credo --strict"],
-      "ecto.setup": ["ecto.create", "ecto.migrate"],
+      "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"]
     ]
   end
