@@ -14,7 +14,7 @@ defmodule Anarchy.WorkflowEngine do
 
   require Logger
 
-  alias Anarchy.{RoleLoader, SessionManager}
+  alias Anarchy.{AgentMail, Notifications, Projects, RoleLoader, SessionManager}
   alias Anarchy.Schemas.Task, as: TaskSchema
 
   @type ce_state ::
@@ -206,6 +206,7 @@ defmodule Anarchy.WorkflowEngine do
 
       :revision_needed ->
         Logger.info("CE review found critical issues for task_id=#{data.task.id}; rolling back to :working")
+        Notifications.notify(:critical_found, %{task: data.task, count: 1})
         data = %{data | feedback: output, ce_review_results: [output | data.ce_review_results], current_worker_pid: nil, current_worker_ref: nil}
         {:next_state, :working, data}
     end
@@ -268,7 +269,9 @@ defmodule Anarchy.WorkflowEngine do
 
   def handle_event(:info, {:worker_complete, :normal, output}, :compounding, data) do
     Logger.info("CE loop completed for task_id=#{data.task.id}")
-    {:next_state, :completed, %{data | learnings: output, current_worker_pid: nil, current_worker_ref: nil}}
+    learnings_text = extract_text(output)
+    persist_learnings(data, learnings_text)
+    {:next_state, :completed, %{data | learnings: learnings_text, current_worker_pid: nil, current_worker_ref: nil}}
   end
 
   def handle_event(:info, {:worker_complete, reason, _output}, :compounding, data) do
@@ -281,6 +284,8 @@ defmodule Anarchy.WorkflowEngine do
   def handle_event(:enter, _old_state, :completed, data) do
     Logger.info("CE loop completed for task_id=#{data.task.id}")
     update_task_status(data.task, :completed)
+    Notifications.notify(:task_completed, %{task: data.task})
+    finalize_session(data.session_id, :completed)
     :keep_state_and_data
   end
 
@@ -289,6 +294,8 @@ defmodule Anarchy.WorkflowEngine do
   def handle_event(:enter, _old_state, :failed, data) do
     Logger.error("CE loop failed for task_id=#{data.task.id}: #{inspect(data.feedback)}")
     update_task_status(data.task, :failed)
+    Notifications.notify(:agent_failed, %{task: data.task, reason: data.feedback})
+    finalize_session(data.session_id, :failed)
     :keep_state_and_data
   end
 
@@ -325,7 +332,11 @@ defmodule Anarchy.WorkflowEngine do
   # --- Private helpers ---
 
   defp spawn_role_worker(role, data, prompt_fn) do
+    # Complete previous session before starting new one
+    if data.session_id, do: finalize_session(data.session_id, :completed)
+
     caller = self()
+    session_id = "ce-#{data.task.id}-#{role}-#{System.unique_integer([:positive])}"
 
     {pid, ref} =
       spawn_monitor(fn ->
@@ -339,8 +350,6 @@ defmodule Anarchy.WorkflowEngine do
 
         send(caller, {:worker_complete, :normal, result})
       end)
-
-    session_id = "ce-#{data.task.id}-#{role}-#{System.unique_integer([:positive])}"
 
     SessionManager.create_session(%{
       task_id: data.task.id,
@@ -376,11 +385,34 @@ defmodule Anarchy.WorkflowEngine do
       String.contains?(lower, "critical") -> :revision_needed
       String.contains?(lower, "revision") -> :revision_needed
       String.contains?(lower, "reject") -> :revision_needed
-      true -> :approved
+      String.contains?(lower, "approved") -> :approved
+      true -> :revision_needed
     end
   end
 
-  defp classify_review_result(_output), do: :approved
+  defp classify_review_result(%{"status" => status}) when is_binary(status) do
+    classify_review_result(status)
+  end
+
+  defp classify_review_result(%{status: status}) when is_binary(status) do
+    classify_review_result(status)
+  end
+
+  defp classify_review_result(%{"output" => output}) when is_binary(output) do
+    classify_review_result(output)
+  end
+
+  defp classify_review_result(%{output: output}) when is_binary(output) do
+    classify_review_result(output)
+  end
+
+  # Map with no recognizable fields — treat as needing revision to be safe
+  defp classify_review_result(%{} = _map_output), do: :revision_needed
+
+  # Nil or other — default to approved only for :ok atoms from runtime
+  defp classify_review_result(:ok), do: :approved
+  defp classify_review_result(nil), do: :revision_needed
+  defp classify_review_result(_output), do: :revision_needed
 
   defp update_task_status(%TaskSchema{id: task_id}, status) when is_atom(status) do
     Anarchy.Tracker.update_task_state(task_id, Atom.to_string(status))
@@ -389,6 +421,84 @@ defmodule Anarchy.WorkflowEngine do
   end
 
   defp update_task_status(_task, _status), do: :ok
+
+  defp finalize_session(nil, _status), do: :ok
+
+  defp finalize_session(session_id, :completed) do
+    SessionManager.complete_session(session_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp finalize_session(session_id, :failed) do
+    SessionManager.fail_session(session_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp finalize_session(session_id, _status) do
+    SessionManager.complete_session(session_id)
+  rescue
+    _ -> :ok
+  end
+
+  defp persist_learnings(data, learnings_text) when is_binary(learnings_text) and learnings_text != "" do
+    # Save to task record in DB
+    case Projects.get_task(data.task.id) do
+      nil -> :ok
+      task -> Projects.update_task(task, %{learnings: learnings_text})
+    end
+
+    # Write to docs/solutions/ in workspace if available
+    if data.workspace_path do
+      solutions_dir = Path.join(data.workspace_path, "docs/solutions")
+      File.mkdir_p(solutions_dir)
+      filename = "#{data.task.id}-learnings.md"
+      path = Path.join(solutions_dir, filename)
+
+      content = """
+      # Learnings: #{data.task.title}
+
+      Task ID: #{data.task.id}
+      Date: #{DateTime.utc_now() |> DateTime.to_iso8601()}
+
+      #{learnings_text}
+      """
+
+      File.write(path, content)
+    end
+
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp persist_learnings(_data, _learnings), do: :ok
+
+  defp extract_text(output) when is_binary(output), do: output
+  defp extract_text(%{"output" => text}) when is_binary(text), do: text
+  defp extract_text(%{output: text}) when is_binary(text), do: text
+  defp extract_text(:ok), do: ""
+  defp extract_text(other), do: inspect(other)
+
+  defp inject_mail_context(prompt, agent_role, project_id) do
+    unread = AgentMail.inbox(agent_role, unread_only: true, project_id: project_id)
+
+    case unread do
+      [] ->
+        prompt
+
+      messages ->
+        mail_text =
+          Enum.map_join(messages, "\n", fn m ->
+            "[#{m.from_agent}] #{m.subject}: #{m.body}"
+          end)
+
+        prompt <> "\n\n--- Unread Messages ---\n" <> mail_text
+    end
+  rescue
+    _ -> prompt
+  end
 
   defp via_name(task_id), do: {:global, {__MODULE__, task_id}}
 
@@ -409,7 +519,7 @@ defmodule Anarchy.WorkflowEngine do
         ""
       end
 
-    """
+    base = """
     Create an implementation plan for the following task.
 
     Task: #{data.task.title}
@@ -422,10 +532,12 @@ defmodule Anarchy.WorkflowEngine do
     3. Key design decisions
     4. Test strategy
     """
+
+    inject_mail_context(base, "developer", data.project_id)
   end
 
   defp plan_review_prompt(data) do
-    """
+    base = """
     Review this implementation plan for structural soundness and direction.
     This is a lightweight review — do NOT review code.
 
@@ -439,6 +551,8 @@ defmodule Anarchy.WorkflowEngine do
 
     Respond with APPROVED if acceptable, or describe revisions needed.
     """
+
+    inject_mail_context(base, "plan_reviewer", data.project_id)
   end
 
   defp work_prompt(data) do
@@ -449,7 +563,7 @@ defmodule Anarchy.WorkflowEngine do
         ""
       end
 
-    """
+    base = """
     Implement the following task according to the plan.
 
     Task: #{data.task.title}
@@ -457,10 +571,12 @@ defmodule Anarchy.WorkflowEngine do
     Plan: #{inspect(data.plan_output)}
     #{feedback_section}
     """
+
+    inject_mail_context(base, "developer", data.project_id)
   end
 
   defp ce_review_prompt(data) do
-    """
+    base = """
     Perform a Compound Engineering review of the recent changes.
 
     Task: #{data.task.title}
@@ -473,10 +589,12 @@ defmodule Anarchy.WorkflowEngine do
     If any CRITICAL issues found, respond with "CRITICAL:" followed by the issues.
     If only minor issues, respond with "APPROVED" and list suggestions.
     """
+
+    inject_mail_context(base, "ce_reviewer", data.project_id)
   end
 
   defp code_review_prompt(data) do
-    """
+    base = """
     Final code review for the following task.
 
     Task: #{data.task.title}
@@ -490,10 +608,12 @@ defmodule Anarchy.WorkflowEngine do
     If any CRITICAL issues found, respond with "CRITICAL:" followed by the issues.
     If acceptable, respond with "APPROVED".
     """
+
+    inject_mail_context(base, "code_reviewer", data.project_id)
   end
 
   defp compound_prompt(data) do
-    """
+    base = """
     Document what was learned from implementing this task.
 
     Task: #{data.task.title}
@@ -507,5 +627,7 @@ defmodule Anarchy.WorkflowEngine do
 
     Save to docs/solutions/ in the workspace.
     """
+
+    inject_mail_context(base, "developer", data.project_id)
   end
 end

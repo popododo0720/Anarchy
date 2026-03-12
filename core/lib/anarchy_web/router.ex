@@ -31,6 +31,8 @@ defmodule AnarchyWeb.Router do
     live("/designs/:id", DesignEditorLive, :edit)
     live("/tasks/:id", TaskDetailLive, :show)
     live("/agents", AgentMonitorLive, :index)
+    live("/projects/:project_id/map", AgentMapLive, :map)
+    live("/learnings", LearningsLive, :index)
   end
 
   scope "/", AnarchyWeb do

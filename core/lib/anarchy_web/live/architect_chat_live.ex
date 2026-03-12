@@ -6,7 +6,8 @@ defmodule AnarchyWeb.ArchitectChatLive do
 
   use Phoenix.LiveView
 
-  alias Anarchy.{Projects, RoleLoader}
+  alias Anarchy.{Projects, RoleLoader, SessionManager}
+  require Logger
 
   @impl true
   def mount(%{"project_id" => project_id}, _session, socket) do
@@ -16,6 +17,17 @@ defmodule AnarchyWeb.ArchitectChatLive do
       Phoenix.PubSub.subscribe(Anarchy.PubSub, "architect:#{project_id}")
     end
 
+    session_id = "architect-#{project_id}-#{System.unique_integer([:positive])}"
+
+    if connected?(socket) do
+      SessionManager.create_session(%{
+        project_id: project_id,
+        agent_type: "claude_code",
+        session_id: session_id,
+        status: "active"
+      })
+    end
+
     {:ok,
      assign(socket,
        page_title: "Architect Chat — #{project.name}",
@@ -23,7 +35,7 @@ defmodule AnarchyWeb.ArchitectChatLive do
        messages: [],
        input: "",
        streaming: false,
-       session_id: nil,
+       session_id: session_id,
        worker_pid: nil
      )}
   end
@@ -167,22 +179,56 @@ defmodule AnarchyWeb.ArchitectChatLive do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def terminate(_reason, socket) do
+    if socket.assigns[:session_id] do
+      SessionManager.complete_session(socket.assigns.session_id)
+    end
+
+    :ok
+  end
+
   # --- Private ---
 
   defp run_architect(project, message) do
     case RoleLoader.load(:architect) do
-      {:ok, _system_prompt} ->
-        # In production, this would call Claude Code with the system prompt + prompt below.
-        # For now, return a placeholder indicating the agent would respond.
-        "I've analyzed your request for project '#{project.name}'.\n\n" <>
-          "Based on your message, here's my initial design thinking:\n\n" <>
-          "#{message}\n\n" <>
-          "To proceed, I would need Claude Code CLI available to provide detailed architectural guidance. " <>
-          "You can save this conversation as a design document when ready."
+      {:ok, system_prompt} ->
+        prompt = """
+        Project: #{project.name}
+        #{if project.description, do: "Description: #{project.description}", else: ""}
+
+        User message: #{message}
+
+        Respond as the project Architect. Provide concrete architectural guidance,
+        design decisions, and technical recommendations. Be specific and actionable.
+        """
+
+        try do
+          result = RoleLoader.execute_role(:architect, %{id: project.id, title: project.name}, nil, prompt)
+          extract_response_text(result, system_prompt)
+        rescue
+          error ->
+            Logger.warning("Architect agent failed, falling back: #{Exception.message(error)}")
+            fallback_response(project, message)
+        end
 
       {:error, _reason} ->
         "Architect role prompt not available. Please ensure priv/agency-agents/engineering/architect.md exists."
     end
+  end
+
+  defp extract_response_text(result, _system_prompt) when is_binary(result), do: result
+  defp extract_response_text(%{"output" => text}, _) when is_binary(text), do: text
+  defp extract_response_text(%{output: text}, _) when is_binary(text), do: text
+  defp extract_response_text(:ok, _), do: "Architect agent completed but returned no text output."
+  defp extract_response_text(other, _), do: "Architect response: #{inspect(other)}"
+
+  defp fallback_response(project, message) do
+    "I've analyzed your request for project '#{project.name}'.\n\n" <>
+      "Input: #{message}\n\n" <>
+      "Note: The Architect agent (Claude Code) is not available in this environment. " <>
+      "Install Claude Code CLI to enable real-time architectural guidance. " <>
+      "You can still save this conversation as a design document."
   end
 
   defp extract_title(messages) do

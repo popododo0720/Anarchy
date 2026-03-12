@@ -31,13 +31,21 @@ defmodule Anarchy.Application do
         {Oban, oban_config()},
         Anarchy.WorkflowStore,
         Anarchy.SessionManager
-      ] ++ runtime_children()
+      ] ++ endpoint_children() ++ runtime_children()
 
     Supervisor.start_link(
       children,
       strategy: :one_for_one,
       name: Anarchy.Supervisor
     )
+  end
+
+  defp endpoint_children do
+    if Application.get_env(:anarchy, :env) == :test do
+      []
+    else
+      [AnarchyWeb.Endpoint]
+    end
   end
 
   defp runtime_children do

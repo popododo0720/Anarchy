@@ -164,9 +164,23 @@ defmodule AnarchyWeb.ProjectDetailLive do
     design = Projects.get_design!(id)
 
     case Projects.confirm_design(design) do
-      {:ok, _design} ->
-        designs = Projects.list_designs(socket.assigns.project.id)
-        {:noreply, assign(socket, designs: designs)}
+      {:ok, confirmed_design} ->
+        # Auto-decompose on confirm
+        case PMAgent.decompose(confirmed_design) do
+          {:ok, _tasks} ->
+            designs = Projects.list_designs(socket.assigns.project.id)
+            tasks = Projects.list_tasks(socket.assigns.project.id)
+            stats = Projects.project_stats(socket.assigns.project.id)
+
+            {:noreply,
+             socket
+             |> assign(designs: designs, tasks: tasks, stats: stats, tab: "tasks")
+             |> put_flash(:info, "Design confirmed and decomposed into tasks")}
+
+          {:error, _reason} ->
+            designs = Projects.list_designs(socket.assigns.project.id)
+            {:noreply, assign(socket, designs: designs) |> put_flash(:info, "Design confirmed (auto-decompose skipped)")}
+        end
 
       {:error, _changeset} ->
         {:noreply, put_flash(socket, :error, "Failed to confirm design")}

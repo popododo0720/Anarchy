@@ -13,7 +13,8 @@ config :anarchy, AnarchyWeb.Endpoint,
   live_view: [signing_salt: "anarchy-live-view"],
   secret_key_base: String.duplicate("s", 64),
   check_origin: false,
-  server: false
+  http: [port: 4000],
+  server: true
 
 config :anarchy,
   env: config_env(),
@@ -48,6 +49,7 @@ oban_base = [
 
 if config_env() == :test do
   config :anarchy, Oban, Keyword.put(oban_base, :testing, :manual)
+  config :anarchy, AnarchyWeb.Endpoint, server: false
 else
   config :anarchy, Oban, oban_base
 end

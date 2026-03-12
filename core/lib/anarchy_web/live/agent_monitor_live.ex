@@ -125,6 +125,17 @@ defmodule AnarchyWeb.AgentMonitorLive do
 
   def handle_info(_msg, socket), do: {:noreply, socket}
 
+  @impl true
+  def handle_event("pause_agent", %{"session-id" => sid}, socket) do
+    Anarchy.SessionManager.pause_session(sid, "manual")
+    {:noreply, socket}
+  end
+
+  def handle_event("resume_agent", %{"session-id" => sid}, socket) do
+    Anarchy.SessionManager.update_session(sid, %{status: "active", paused_at: nil})
+    {:noreply, socket}
+  end
+
   defp load_active_sessions do
     import Ecto.Query
 

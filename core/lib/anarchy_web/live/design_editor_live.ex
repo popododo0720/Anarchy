@@ -1,7 +1,7 @@
 defmodule AnarchyWeb.DesignEditorLive do
   use Phoenix.LiveView
 
-  alias Anarchy.Projects
+  alias Anarchy.{DesignVersioning, Projects}
 
   @impl true
   def mount(%{"id" => id}, _session, socket) do
@@ -78,6 +78,8 @@ defmodule AnarchyWeb.DesignEditorLive do
   def handle_event("save", %{"design" => params}, socket) do
     case Projects.update_design(socket.assigns.design, params) do
       {:ok, design} ->
+        DesignVersioning.save_version(design, "Manual edit", "user")
+
         {:noreply,
          socket
          |> assign(design: design, editing: false)
