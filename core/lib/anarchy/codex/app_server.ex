@@ -65,6 +65,19 @@ defmodule Anarchy.Codex.AppServer do
   end
 
   @impl Anarchy.Runtime.AgentProtocol
+  def run_once(_opts), do: {:error, :not_supported}
+
+  @impl Anarchy.Runtime.AgentProtocol
+  def start_interactive(opts) do
+    start_session(%{workspace: opts[:workspace_path] || opts[:workspace]})
+  end
+
+  @impl Anarchy.Runtime.AgentProtocol
+  def send_message(pid, prompt) do
+    send(pid, {:send_prompt, prompt})
+    :ok
+  end
+
   def start_session(%{workspace: workspace} = opts) do
     case start_session(workspace) do
       {:ok, session} ->
@@ -166,7 +179,6 @@ defmodule Anarchy.Codex.AppServer do
     {:error, :not_supported}
   end
 
-  @impl Anarchy.Runtime.AgentProtocol
   def send_prompt(pid, prompt) do
     send(pid, {:send_prompt, prompt})
     :ok
@@ -261,10 +273,10 @@ defmodule Anarchy.Codex.AppServer do
       }
     }
 
-    send_message(port, payload)
+    send_rpc_message(port, payload)
 
     with {:ok, _} <- await_response(port, @initialize_id) do
-      send_message(port, %{"method" => "initialized", "params" => %{}})
+      send_rpc_message(port, %{"method" => "initialized", "params" => %{}})
       :ok
     end
   end
@@ -281,7 +293,7 @@ defmodule Anarchy.Codex.AppServer do
   end
 
   defp start_thread(port, workspace, %{approval_policy: approval_policy, thread_sandbox: thread_sandbox}) do
-    send_message(port, %{
+    send_rpc_message(port, %{
       "method" => "thread/start",
       "id" => @thread_start_id,
       "params" => %{
@@ -305,7 +317,7 @@ defmodule Anarchy.Codex.AppServer do
   end
 
   defp start_turn(port, thread_id, prompt, issue, workspace, approval_policy, turn_sandbox_policy) do
-    send_message(port, %{
+    send_rpc_message(port, %{
       "method" => "turn/start",
       "id" => @turn_start_id,
       "params" => %{
@@ -561,7 +573,7 @@ defmodule Anarchy.Codex.AppServer do
 
     result = tool_executor.(tool_name, arguments)
 
-    send_message(port, %{
+    send_rpc_message(port, %{
       "id" => id,
       "result" => result
     })
@@ -689,7 +701,7 @@ defmodule Anarchy.Codex.AppServer do
          metadata,
          true
        ) do
-    send_message(port, %{"id" => id, "result" => %{"decision" => decision}})
+    send_rpc_message(port, %{"id" => id, "result" => %{"decision" => decision}})
 
     emit_message(
       on_message,
@@ -726,7 +738,7 @@ defmodule Anarchy.Codex.AppServer do
        ) do
     case tool_request_user_input_approval_answers(params) do
       {:ok, answers, decision} ->
-        send_message(port, %{"id" => id, "result" => %{"answers" => answers}})
+        send_rpc_message(port, %{"id" => id, "result" => %{"answers" => answers}})
 
         emit_message(
           on_message,
@@ -803,7 +815,7 @@ defmodule Anarchy.Codex.AppServer do
        ) do
     case tool_request_user_input_unavailable_answers(params) do
       {:ok, answers} ->
-        send_message(port, %{"id" => id, "result" => %{"answers" => answers}})
+        send_rpc_message(port, %{"id" => id, "result" => %{"answers" => answers}})
 
         emit_message(
           on_message,
@@ -1003,7 +1015,7 @@ defmodule Anarchy.Codex.AppServer do
 
   defp tool_call_arguments(_params), do: %{}
 
-  defp send_message(port, message) do
+  defp send_rpc_message(port, message) do
     line = Jason.encode!(message) <> "\n"
     Port.command(port, line)
   end

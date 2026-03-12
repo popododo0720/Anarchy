@@ -78,15 +78,15 @@ defmodule Anarchy.RoleLoader do
 
   @spec execute_role(atom(), map(), Path.t() | nil, String.t()) :: term()
   def execute_role(role, task, workspace_path, prompt) do
-    system_prompt =
-      case load(role) do
-        {:ok, content} -> content
-        {:error, _reason} -> nil
-      end
-
     if role in @codex_roles do
-      execute_codex_role(task, workspace_path, prompt, system_prompt)
+      execute_codex_role(task, workspace_path, prompt)
     else
+      system_prompt =
+        case load(role) do
+          {:ok, content} -> content
+          {:error, _reason} -> nil
+        end
+
       execute_claude_code_role(role, task, workspace_path, prompt, system_prompt)
     end
   end
@@ -140,7 +140,7 @@ defmodule Anarchy.RoleLoader do
     _ -> nil
   end
 
-  defp execute_codex_role(_task, workspace_path, prompt, _system_prompt) do
+  defp execute_codex_role(_task, workspace_path, prompt) do
     case Anarchy.Codex.AppServer.run(workspace_path || System.tmp_dir!(), prompt, %{}) do
       {:ok, result} -> result
       {:error, reason} -> raise "Codex execution failed: #{inspect(reason)}"
@@ -148,24 +148,11 @@ defmodule Anarchy.RoleLoader do
   end
 
   defp execute_claude_code_role(role, _task, workspace_path, prompt, system_prompt) do
-    opts = %{
-      workspace_path: workspace_path || System.tmp_dir!(),
+    Anarchy.Runtime.ClaudeCode.run_once(
+      prompt: prompt,
       model: model_for(role),
       system_prompt: system_prompt,
-      on_message: fn _msg -> :ok end
-    }
-
-    {:ok, _session_id, pid} = Anarchy.Runtime.ClaudeCode.start_session(opts)
-    Anarchy.Runtime.ClaudeCode.send_prompt(pid, prompt)
-    ref = Process.monitor(pid)
-
-    receive do
-      {:DOWN, ^ref, :process, ^pid, :normal} -> :ok
-      {:DOWN, ^ref, :process, ^pid, reason} -> raise "Claude Code exited: #{inspect(reason)}"
-    after
-      3_600_000 ->
-        Process.exit(pid, :kill)
-        raise "Claude Code timed out after 1 hour"
-    end
+      workspace_path: workspace_path || System.tmp_dir!()
+    )
   end
 end

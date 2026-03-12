@@ -340,15 +340,14 @@ defmodule Anarchy.WorkflowEngine do
 
     {pid, ref} =
       spawn_monitor(fn ->
-        result =
-          try do
-            prompt = prompt_fn.(data)
-            RoleLoader.execute_role(role, data.task, data.workspace_path, prompt)
-          catch
-            kind, reason -> {:error, {kind, reason}}
-          end
-
-        send(caller, {:worker_complete, :normal, result})
+        try do
+          prompt = prompt_fn.(data)
+          result = RoleLoader.execute_role(role, data.task, data.workspace_path, prompt)
+          send(caller, {:worker_complete, :normal, result})
+        catch
+          kind, reason ->
+            send(caller, {:worker_complete, :error, {kind, reason, __STACKTRACE__}})
+        end
       end)
 
     SessionManager.create_session(%{
@@ -378,7 +377,14 @@ defmodule Anarchy.WorkflowEngine do
     end
   end
 
-  defp classify_review_result(output) when is_binary(output) do
+  # Handle {:ok, text} tuples from run_once/1
+  defp classify_review_result({:ok, text}) when is_binary(text) and text != "" do
+    classify_review_result(text)
+  end
+
+  defp classify_review_result({:error, _reason}), do: :revision_needed
+
+  defp classify_review_result(output) when is_binary(output) and output != "" do
     lower = String.downcase(output)
 
     cond do
@@ -386,60 +392,42 @@ defmodule Anarchy.WorkflowEngine do
       String.contains?(lower, "revision") -> :revision_needed
       String.contains?(lower, "reject") -> :revision_needed
       String.contains?(lower, "approved") -> :approved
+      String.contains?(lower, "lgtm") -> :approved
       true -> :revision_needed
     end
   end
 
-  defp classify_review_result(%{"status" => status}) when is_binary(status) do
-    classify_review_result(status)
-  end
-
-  defp classify_review_result(%{status: status}) when is_binary(status) do
-    classify_review_result(status)
-  end
-
-  defp classify_review_result(%{"output" => output}) when is_binary(output) do
-    classify_review_result(output)
-  end
-
-  defp classify_review_result(%{output: output}) when is_binary(output) do
-    classify_review_result(output)
-  end
-
-  # Map with no recognizable fields — treat as needing revision to be safe
-  defp classify_review_result(%{} = _map_output), do: :revision_needed
-
-  # Nil or other — default to approved only for :ok atoms from runtime
-  defp classify_review_result(:ok), do: :approved
+  # :ok is NOT a valid review payload — fail-closed
+  defp classify_review_result(:ok), do: :revision_needed
   defp classify_review_result(nil), do: :revision_needed
   defp classify_review_result(_output), do: :revision_needed
 
   defp update_task_status(%TaskSchema{id: task_id}, status) when is_atom(status) do
     Anarchy.Tracker.update_task_state(task_id, Atom.to_string(status))
   rescue
-    _ -> :ok
+    error ->
+      Logger.error("Failed to update task status for #{task_id}: #{inspect(error)}")
+      :ok
   end
 
   defp update_task_status(_task, _status), do: :ok
 
   defp finalize_session(nil, _status), do: :ok
 
-  defp finalize_session(session_id, :completed) do
-    SessionManager.complete_session(session_id)
-  rescue
-    _ -> :ok
-  end
-
   defp finalize_session(session_id, :failed) do
     SessionManager.fail_session(session_id)
   rescue
-    _ -> :ok
+    error ->
+      Logger.error("Failed to finalize session #{session_id} as failed: #{inspect(error)}")
+      :ok
   end
 
   defp finalize_session(session_id, _status) do
     SessionManager.complete_session(session_id)
   rescue
-    _ -> :ok
+    error ->
+      Logger.error("Failed to finalize session #{session_id}: #{inspect(error)}")
+      :ok
   end
 
   defp persist_learnings(data, learnings_text) when is_binary(learnings_text) and learnings_text != "" do
@@ -453,7 +441,9 @@ defmodule Anarchy.WorkflowEngine do
     if data.workspace_path do
       solutions_dir = Path.join(data.workspace_path, "docs/solutions")
       File.mkdir_p(solutions_dir)
-      filename = "#{data.task.id}-learnings.md"
+      # Sanitize task.id to prevent path traversal
+      safe_id = data.task.id |> to_string() |> String.replace(~r/[^a-zA-Z0-9_\-]/, "_")
+      filename = "#{safe_id}-learnings.md"
       path = Path.join(solutions_dir, filename)
 
       content = """
@@ -470,11 +460,15 @@ defmodule Anarchy.WorkflowEngine do
 
     :ok
   rescue
-    _ -> :ok
+    error ->
+      Logger.error("Failed to persist learnings for task #{data.task.id}: #{inspect(error)}")
+      :ok
   end
 
   defp persist_learnings(_data, _learnings), do: :ok
 
+  defp extract_text({:ok, text}) when is_binary(text), do: text
+  defp extract_text({:error, _reason}), do: ""
   defp extract_text(output) when is_binary(output), do: output
   defp extract_text(%{"output" => text}) when is_binary(text), do: text
   defp extract_text(%{output: text}) when is_binary(text), do: text

@@ -109,35 +109,22 @@ defmodule Anarchy.AgentRunner do
 
   # --- Claude Code runtime ---
 
-  defp run_claude_code_turns(workspace, task, update_recipient, opts) do
-    max_turns = Keyword.get(opts, :max_turns, Config.settings!().agent.max_turns)
+  defp run_claude_code_turns(workspace, task, _update_recipient, opts) do
     task_state_fetcher = Keyword.get(opts, :task_state_fetcher, &Tracker.fetch_task_states_by_ids/1)
+    prompt = build_turn_prompt(task, opts, 1, Keyword.get(opts, :max_turns, Config.settings!().agent.max_turns))
 
-    with {:ok, session_id, pid} <- ClaudeCode.start_session(%{workspace_path: workspace, on_message: worker_message_handler(update_recipient, task)}) do
-      try do
-        prompt = build_turn_prompt(task, opts, 1, max_turns)
-        ClaudeCode.send_prompt(pid, prompt)
-        # Claude Code manages its own turn loop; wait for process to finish
-        ref = Process.monitor(pid)
+    case ClaudeCode.run_once(prompt: prompt, workspace_path: workspace) do
+      {:ok, _text} ->
+        Logger.info("Completed Claude Code agent run for #{task_context(task)} workspace=#{workspace}")
 
-        receive do
-          {:DOWN, ^ref, :process, ^pid, :normal} ->
-            Logger.info("Completed Claude Code agent run for #{task_context(task)} session_id=#{session_id} workspace=#{workspace}")
-
-            case continue_with_task?(task, task_state_fetcher) do
-              {:continue, _refreshed_task} -> :ok
-              {:done, _refreshed_task} -> :ok
-              {:error, reason} -> {:error, reason}
-            end
-
-          {:DOWN, ^ref, :process, ^pid, reason} ->
-            {:error, {:claude_code_exited, reason}}
+        case continue_with_task?(task, task_state_fetcher) do
+          {:continue, _refreshed_task} -> :ok
+          {:done, _refreshed_task} -> :ok
+          {:error, reason} -> {:error, reason}
         end
-      after
-        ClaudeCode.stop_session(pid)
-      catch
-        :exit, _ -> :ok
-      end
+
+      {:error, reason} ->
+        {:error, {:claude_code_exited, reason}}
     end
   end
 
@@ -203,10 +190,6 @@ defmodule Anarchy.AgentRunner do
   end
 
   defp active_task_status?(_status), do: false
-
-  defp task_context(%TaskSchema{id: task_id, title: title}) do
-    "task_id=#{task_id} title=#{title}"
-  end
 
   defp task_context(%{id: task_id, title: title}) do
     "task_id=#{task_id} title=#{title}"
