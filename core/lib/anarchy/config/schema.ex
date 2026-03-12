@@ -74,12 +74,13 @@ defmodule Anarchy.Config.Schema do
       field(:model, :string, default: "sonnet")
       field(:max_budget_usd, :float)
       field(:output_format, :string, default: "stream-json")
+      field(:skip_permissions, :boolean, default: false)
     end
 
     @spec changeset(%__MODULE__{}, map()) :: Ecto.Changeset.t()
     def changeset(schema, attrs) do
       schema
-      |> cast(attrs, [:command, :model, :max_budget_usd, :output_format], empty_values: [])
+      |> cast(attrs, [:command, :model, :max_budget_usd, :output_format, :skip_permissions], empty_values: [])
     end
   end
 

@@ -19,9 +19,12 @@ defmodule Anarchy.Application do
 
   use Application
 
+  require Logger
+
   @impl true
   def start(_type, _args) do
     :ok = Anarchy.LogFile.configure()
+    warn_headless_codex_policy()
 
     children =
       [
@@ -70,6 +73,28 @@ defmodule Anarchy.Application do
   end
 
   defp tui_enabled?, do: System.get_env("ANARCHY_TUI") == "1"
+
+  defp warn_headless_codex_policy do
+    unless tui_enabled?() do
+      try do
+        policy = Anarchy.Config.settings!().codex.approval_policy
+
+        unless headless_safe_policy?(policy) do
+          Logger.warning(
+            "Codex approval_policy may block in headless mode. " <>
+              "Set codex.approval_policy to \"never\" or use a reject-map in WORKFLOW.md for headless operation."
+          )
+        end
+      rescue
+        error ->
+          Logger.debug("Skipping headless codex warning: #{Exception.message(error)}")
+      end
+    end
+  end
+
+  defp headless_safe_policy?("never"), do: true
+  defp headless_safe_policy?(%{"reject" => _}), do: true
+  defp headless_safe_policy?(_), do: false
 
   defp oban_config do
     Application.get_env(:anarchy, Oban, [])

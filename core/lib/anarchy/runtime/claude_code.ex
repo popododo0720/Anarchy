@@ -37,6 +37,7 @@ defmodule Anarchy.Runtime.ClaudeCode do
   @impl GenServer
   def init(%{resume: session_id} = opts) do
     args = ["--resume", session_id, "--output-format", "stream-json"]
+    args = if skip_permissions?(), do: ["--dangerously-skip-permissions" | args], else: args
     port = open_port(args, opts[:workspace_path])
 
     {:ok,
@@ -121,6 +122,11 @@ defmodule Anarchy.Runtime.ClaudeCode do
   defp build_args(opts) do
     base = ["-p", opts[:prompt] || "", "--output-format", "stream-json"]
 
+    base =
+      if skip_permissions?(),
+        do: ["--dangerously-skip-permissions" | base],
+        else: base
+
     base
     |> maybe_add("--model", opts[:model])
     |> maybe_add("--system-prompt", opts[:system_prompt])
@@ -129,6 +135,16 @@ defmodule Anarchy.Runtime.ClaudeCode do
 
   defp maybe_add(args, _flag, nil), do: args
   defp maybe_add(args, flag, value), do: args ++ [flag, to_string(value)]
+
+  defp skip_permissions? do
+    try do
+      Anarchy.Config.settings!().claude_code.skip_permissions
+    rescue
+      error ->
+        Logger.warning("Failed to read skip_permissions config, defaulting to false: #{inspect(error)}")
+        false
+    end
+  end
 
   defp generate_session_id do
     "anarchy-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower)

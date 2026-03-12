@@ -453,13 +453,20 @@ defmodule Anarchy.StatusDashboard do
   end
 
   defp render_to_terminal(content) do
-    IO.write([
-      IO.ANSI.home(),
-      IO.ANSI.clear(),
-      normalize_status_lines(content),
-      "\n"
-    ])
+    normalized = normalize_status_lines(content)
+
+    if IO.ANSI.enabled?() do
+      IO.write([IO.ANSI.home(), IO.ANSI.clear(), normalized, "\n"])
+    else
+      IO.write([strip_ansi(normalized), "\n"])
+    end
   end
+
+  defp strip_ansi(text) when is_binary(text) do
+    String.replace(text, ~r/\e\[[0-9;]*[a-zA-Z]/, "")
+  end
+
+  defp strip_ansi(iodata), do: iodata |> IO.iodata_to_binary() |> strip_ansi()
 
   defp update_token_samples(samples, now_ms, total_tokens) do
     prune_graph_samples([{now_ms, total_tokens} | samples], now_ms)
