@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	apppublicip "github.com/popododo0720/anarchy/internal/application/publicip"
@@ -20,6 +21,14 @@ func (fakeProvider) ListPublicIPs(context.Context) ([]domainpublicip.PublicIPSum
 
 func (fakeProvider) GetPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
 	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}, nil
+}
+
+func (fakeProvider) AttachPublicIP(context.Context, domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic1", Type: "floating"}, nil
+}
+
+func (fakeProvider) DetachPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: false, AttachmentTarget: "", Type: "floating"}, nil
 }
 
 func TestListPublicIPsHandlerReturnsStructuredSummary(t *testing.T) {
@@ -56,5 +65,29 @@ func TestGetPublicIPHandlerReturnsStructuredDetail(t *testing.T) {
 	}
 	if body["type"] != "floating" {
 		t.Fatalf("body = %#v", body)
+	}
+}
+
+func TestAttachPublicIPHandlerReturnsUpdatedDetail(t *testing.T) {
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/attach", strings.NewReader(`{"name":"fip-01","attachmentTarget":"vm1:nic1"}`))
+	req.SetPathValue("name", "fip-01")
+	res := httptest.NewRecorder()
+
+	handler.AttachPublicIP(res, req)
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusAccepted)
+	}
+}
+
+func TestDetachPublicIPHandlerReturnsUpdatedDetail(t *testing.T) {
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/detach", nil)
+	req.SetPathValue("name", "fip-01")
+	res := httptest.NewRecorder()
+
+	handler.DetachPublicIP(res, req)
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusAccepted)
 	}
 }

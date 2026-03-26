@@ -1,6 +1,7 @@
 package publicip
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -28,6 +29,11 @@ type publicIPDetail struct {
 	Type             string `json:"type"`
 }
 
+type attachPublicIPRequest struct {
+	Name             string `json:"name"`
+	AttachmentTarget string `json:"attachmentTarget"`
+}
+
 func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing publicip subcommand")
@@ -41,6 +47,16 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 			return fmt.Errorf("usage: publicip show <name>")
 		}
 		return runShow(client, args[1], out)
+	case "attach":
+		if len(args) < 3 {
+			return fmt.Errorf("usage: publicip attach <name> <vm:nic>")
+		}
+		return runAttach(client, attachPublicIPRequest{Name: args[1], AttachmentTarget: args[2]}, out)
+	case "detach":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: publicip detach <name>")
+		}
+		return runDetach(client, args[1], out)
 	default:
 		return fmt.Errorf("unknown publicip subcommand: %s", args[0])
 	}
@@ -68,8 +84,39 @@ func runShow(client Client, name string, out io.Writer) error {
 	return err
 }
 
+func runAttach(client Client, req attachPublicIPRequest, out io.Writer) error {
+	var item publicIPDetail
+	if err := client.postJSON("/api/v1/public-ips/"+req.Name+"/attach", req, &item); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(out, "Attached public IP: %s -> %s\n", item.Name, item.AttachmentTarget)
+	return err
+}
+
+func runDetach(client Client, name string, out io.Writer) error {
+	var item publicIPDetail
+	if err := client.postJSON("/api/v1/public-ips/"+name+"/detach", map[string]any{}, &item); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(out, "Detached public IP: %s\n", item.Name)
+	return err
+}
+
 func (c Client) getJSON(path string, target any) error {
 	resp, err := c.HTTPClient.Get(c.BaseURL + path)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("api error: %s", resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c Client) postJSON(path string, body any, target any) error {
+	data, _ := json.Marshal(body)
+	resp, err := c.HTTPClient.Post(c.BaseURL+path, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

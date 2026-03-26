@@ -1,5 +1,10 @@
 package publicip
 
+type AttachPublicIPRequest struct {
+	Name             string `json:"name"`
+	AttachmentTarget string `json:"attachmentTarget"`
+}
+
 type PublicIPSummary struct {
 	Name             string `json:"name"`
 	Address          string `json:"address"`

@@ -21,3 +21,11 @@ func (Provider) GetPublicIP(_ context.Context, name string) (domainpublicip.Publ
 	}
 	return domainpublicip.PublicIPDetail{Name: "fip-sample", Address: "203.0.113.10", Attached: false, AttachmentTarget: "", Type: "floating"}, nil
 }
+
+func (Provider) AttachPublicIP(_ context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: req.Name, Address: "203.0.113.10", Attached: true, AttachmentTarget: req.AttachmentTarget, Type: "floating"}, nil
+}
+
+func (Provider) DetachPublicIP(_ context.Context, name string) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: name, Address: "203.0.113.10", Attached: false, AttachmentTarget: "", Type: "floating"}, nil
+}

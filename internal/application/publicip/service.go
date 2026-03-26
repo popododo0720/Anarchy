@@ -22,3 +22,11 @@ func (s *Service) ListPublicIPs(ctx context.Context) ([]domainpublicip.PublicIPS
 func (s *Service) GetPublicIP(ctx context.Context, name string) (domainpublicip.PublicIPDetail, error) {
 	return s.provider.GetPublicIP(ctx, name)
 }
+
+func (s *Service) AttachPublicIP(ctx context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	return s.provider.AttachPublicIP(ctx, req)
+}
+
+func (s *Service) DetachPublicIP(ctx context.Context, name string) (domainpublicip.PublicIPDetail, error) {
+	return s.provider.DetachPublicIP(ctx, name)
+}

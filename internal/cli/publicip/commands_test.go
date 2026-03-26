@@ -48,3 +48,39 @@ func TestRunShowPrintsPublicIPDetail(t *testing.T) {
 		}
 	}
 }
+
+func TestRunAttachCallsEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/public-ips/fip-01/attach" {
+			t.Fatalf("path = %s, want /api/v1/public-ips/fip-01/attach", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"name":"fip-01","address":"203.0.113.10","attached":true,"attachmentTarget":"vm1:nic1","type":"floating"}`))
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := clipublicip.Run([]string{"attach", "fip-01", "vm1:nic1"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Attached public IP: fip-01 -> vm1:nic1")) {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestRunDetachCallsEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/public-ips/fip-01/detach" {
+			t.Fatalf("path = %s, want /api/v1/public-ips/fip-01/detach", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"name":"fip-01","address":"203.0.113.10","attached":false,"attachmentTarget":"","type":"floating"}`))
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := clipublicip.Run([]string{"detach", "fip-01"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Detached public IP: fip-01")) {
+		t.Fatalf("output = %q", out.String())
+	}
+}

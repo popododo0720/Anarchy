@@ -18,6 +18,14 @@ func (fakeProvider) GetPublicIP(context.Context, string) (domainpublicip.PublicI
 	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}, nil
 }
 
+func (fakeProvider) AttachPublicIP(context.Context, domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic1", Type: "floating"}, nil
+}
+
+func (fakeProvider) DetachPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: false, AttachmentTarget: "", Type: "floating"}, nil
+}
+
 func TestServiceDelegatesToProvider(t *testing.T) {
 	svc := apppublicip.NewService(fakeProvider{})
 	items, err := svc.ListPublicIPs(context.Background())
@@ -33,5 +41,19 @@ func TestServiceDelegatesToProvider(t *testing.T) {
 	}
 	if detail.Type != "floating" {
 		t.Fatalf("GetPublicIP() = %#v", detail)
+	}
+	attached, err := svc.AttachPublicIP(context.Background(), domainpublicip.AttachPublicIPRequest{Name: "fip-01", AttachmentTarget: "vm1:nic1"})
+	if err != nil {
+		t.Fatalf("AttachPublicIP() error = %v", err)
+	}
+	if attached.AttachmentTarget != "vm1:nic1" {
+		t.Fatalf("AttachPublicIP() = %#v", attached)
+	}
+	detached, err := svc.DetachPublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("DetachPublicIP() error = %v", err)
+	}
+	if detached.Attached {
+		t.Fatalf("DetachPublicIP() = %#v", detached)
 	}
 }
