@@ -1,0 +1,26 @@
+package vm
+
+type CreateVMRequest struct {
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	CPU     int    `json:"cpu"`
+	Memory  string `json:"memory"`
+	Network string `json:"network"`
+}
+
+type VMSummary struct {
+	Name      string `json:"name"`
+	Phase     string `json:"phase"`
+	Image     string `json:"image"`
+	PrivateIP string `json:"privateIp"`
+}
+
+type VMDetail struct {
+	Name      string `json:"name"`
+	Phase     string `json:"phase"`
+	Image     string `json:"image"`
+	CPU       int    `json:"cpu"`
+	Memory    string `json:"memory"`
+	Network   string `json:"network"`
+	PrivateIP string `json:"privateIp"`
+}

@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package anarchy.system.v1;
+
+option go_package = "github.com/popododo0720/anarchy/proto/anarchy/system/v1;systemv1";
+
+service SystemService {
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+  rpc GetCapabilities(GetCapabilitiesRequest) returns (GetCapabilitiesResponse);
+}
+
+message GetHealthRequest {}
+message GetVersionRequest {}
+message GetCapabilitiesRequest {}
+
+message GetHealthResponse {
+  string status = 1;
+  bool api_reachable = 2;
+  bool kubernetes_reachable = 3;
+  bool kubevirt_installed = 4;
+  bool kubevirt_ready = 5;
+  bool cdi_installed = 6;
+  bool cdi_ready = 7;
+  int32 total_nodes = 8;
+  int32 ready_nodes = 9;
+  repeated string warnings = 10;
+}
+
+message GetVersionResponse {
+  string api_version = 1;
+  string server_version = 2;
+  repeated string supported_api_versions = 3;
+  string kubernetes_version = 4;
+  string kubevirt_version = 5;
+}
+
+message GetCapabilitiesResponse {
+  bool vm_lifecycle_supported = 1;
+  bool image_inventory_supported = 2;
+  bool diagnostics_supported = 3;
+  bool public_ip_supported = 4;
+  repeated string capabilities = 5;
+}

@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package anarchy.image.v1;
+
+option go_package = "github.com/popododo0720/anarchy/proto/anarchy/image/v1;imagev1";
+
+service ImageService {
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse);
+  rpc GetImage(GetImageRequest) returns (GetImageResponse);
+}
+
+message ListImagesRequest {}
+message GetImageRequest { string name = 1; }
+
+message ImageSummary {
+  string name = 1;
+  string source_type = 2;
+  bool ready = 3;
+  string size = 4;
+}
+
+message ImageDetail {
+  string name = 1;
+  string source_type = 2;
+  bool ready = 3;
+  string size = 4;
+  string description = 5;
+  repeated string tags = 6;
+}
+
+message ListImagesResponse { repeated ImageSummary items = 1; }
+message GetImageResponse { ImageDetail item = 1; }

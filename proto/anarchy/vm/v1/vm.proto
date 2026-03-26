@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+package anarchy.vm.v1;
+
+option go_package = "github.com/popododo0720/anarchy/proto/anarchy/vm/v1;vmv1";
+
+service VMService {
+  rpc CreateVM(CreateVMRequest) returns (GetVMResponse);
+  rpc ListVMs(ListVMsRequest) returns (ListVMsResponse);
+  rpc GetVM(GetVMRequest) returns (GetVMResponse);
+  rpc StartVM(ActionVMRequest) returns (ActionVMResponse);
+  rpc StopVM(ActionVMRequest) returns (ActionVMResponse);
+  rpc RestartVM(ActionVMRequest) returns (ActionVMResponse);
+  rpc DeleteVM(ActionVMRequest) returns (ActionVMResponse);
+}
+
+message CreateVMRequest {
+  string name = 1;
+  string image = 2;
+  int32 cpu = 3;
+  string memory = 4;
+  string network = 5;
+}
+message ListVMsRequest {}
+message GetVMRequest { string name = 1; }
+message ActionVMRequest { string name = 1; }
+message ActionVMResponse { bool accepted = 1; }
+
+message VMSummary {
+  string name = 1;
+  string phase = 2;
+  string image = 3;
+  string private_ip = 4;
+}
+message VMDetail {
+  string name = 1;
+  string phase = 2;
+  string image = 3;
+  int32 cpu = 4;
+  string memory = 5;
+  string network = 6;
+  string private_ip = 7;
+}
+message ListVMsResponse { repeated VMSummary items = 1; }
+message GetVMResponse { VMDetail item = 1; }

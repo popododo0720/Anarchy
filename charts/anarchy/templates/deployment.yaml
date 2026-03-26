@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anarchy-api
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: anarchy-api
+  template:
+    metadata:
+      labels:
+        app: anarchy-api
+    spec:
+      containers:
+        - name: anarchy-api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8080
+          env:
+            - name: ANARCHY_API_ADDR
+              value: ":8080"
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}

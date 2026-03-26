@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package anarchy.node.v1;
+
+option go_package = "github.com/popododo0720/anarchy/proto/anarchy/node/v1;nodev1";
+
+service NodeService {
+  rpc ListNodes(ListNodesRequest) returns (ListNodesResponse);
+  rpc GetNode(GetNodeRequest) returns (GetNodeResponse);
+}
+
+message ListNodesRequest {}
+message GetNodeRequest { string name = 1; }
+
+message NodeSummary {
+  string name = 1;
+  string class = 2;
+  bool ready = 3;
+  bool schedulable = 4;
+  bool virtualization_capable = 5;
+}
+
+message NodeDetail {
+  string name = 1;
+  string class = 2;
+  bool ready = 3;
+  bool schedulable = 4;
+  bool virtualization_capable = 5;
+  repeated string capabilities = 6;
+}
+
+message ListNodesResponse { repeated NodeSummary items = 1; }
+message GetNodeResponse { NodeDetail item = 1; }
