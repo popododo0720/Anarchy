@@ -1,0 +1,40 @@
+package anarchy
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func readChartFile(t *testing.T, name string) string {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join(".", name))
+	if err != nil {
+		t.Fatalf("read %s: %v", name, err)
+	}
+	return string(content)
+}
+
+func TestChartIncludesServiceAccountAndRBACTemplates(t *testing.T) {
+	for _, name := range []string{"templates/serviceaccount.yaml", "templates/role.yaml", "templates/rolebinding.yaml"} {
+		if _, err := os.Stat(filepath.Join(".", name)); err != nil {
+			t.Fatalf("expected %s to exist: %v", name, err)
+		}
+	}
+}
+
+func TestChartValuesAndDeploymentSupportNamespaceConfig(t *testing.T) {
+	values := readChartFile(t, "values.yaml")
+	deployment := readChartFile(t, "templates/deployment.yaml")
+	for _, want := range []string{"serviceAccount:", "config:", "namespace:"} {
+		if !strings.Contains(values, want) {
+			t.Fatalf("values.yaml missing %q\n%s", want, values)
+		}
+	}
+	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace"} {
+		if !strings.Contains(deployment, want) {
+			t.Fatalf("deployment.yaml missing %q\n%s", want, deployment)
+		}
+	}
+}

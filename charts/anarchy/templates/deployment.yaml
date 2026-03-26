@@ -12,6 +12,7 @@ spec:
       labels:
         app: anarchy-api
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: anarchy-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
@@ -21,5 +22,19 @@ spec:
           env:
             - name: ANARCHY_API_ADDR
               value: ":8080"
+            - name: ANARCHY_NAMESPACE
+              value: "{{ .Values.config.namespace }}"
+          readinessProbe:
+            httpGet:
+              path: /api/v1/system/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v1/system/health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
