@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	clidiagnose "github.com/popododo0720/anarchy/internal/cli/diagnose"
 	cliimage "github.com/popododo0720/anarchy/internal/cli/image"
 	clinode "github.com/popododo0720/anarchy/internal/cli/node"
 	clisystem "github.com/popododo0720/anarchy/internal/cli/system"
@@ -25,6 +26,8 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 		return cliimage.Run(args[1:], apiBaseURL, httpClient, out)
 	case "vm":
 		return clivm.Run(args[1:], apiBaseURL, httpClient, out)
+	case "diagnose":
+		return clidiagnose.Run(args[1:], apiBaseURL, httpClient, out)
 	default:
 		return fmt.Errorf("unknown command: %s", args[0])
 	}
