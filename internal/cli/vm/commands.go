@@ -15,19 +15,24 @@ type Client struct {
 }
 
 type vmSummary struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Image     string `json:"image"`
-	PrivateIP string `json:"privateIp"`
+	Name               string              `json:"name"`
+	Phase              string              `json:"phase"`
+	Image              string              `json:"image"`
+	Network            string              `json:"network,omitempty"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	PrivateIP          string              `json:"privateIp"`
+	NetworkAttachments []networkAttachment `json:"networkAttachments,omitempty"`
 }
 type vmDetail struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Image     string `json:"image"`
-	CPU       int    `json:"cpu"`
-	Memory    string `json:"memory"`
-	Network   string `json:"network"`
-	PrivateIP string `json:"privateIp"`
+	Name               string              `json:"name"`
+	Phase              string              `json:"phase"`
+	Image              string              `json:"image"`
+	CPU                int                 `json:"cpu"`
+	Memory             string              `json:"memory"`
+	Network            string              `json:"network"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	PrivateIP          string              `json:"privateIp"`
+	NetworkAttachments []networkAttachment `json:"networkAttachments,omitempty"`
 }
 
 type networkAttachment struct {
@@ -96,7 +101,7 @@ func runList(client Client, out io.Writer) error {
 		return err
 	}
 	for _, vm := range vms {
-		if _, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nPrivate IP: %s\n\n", vm.Name, vm.Phase, vm.Image, vm.PrivateIP); err != nil {
+		if _, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nNetwork: %s\nSubnet: %s\nPrivate IP: %s\n\n", vm.Name, vm.Phase, vm.Image, valueOrUnknown(vm.Network), valueOrUnknown(vm.SubnetRef), vm.PrivateIP); err != nil {
 			return err
 		}
 	}
@@ -107,7 +112,7 @@ func runShow(client Client, name string, out io.Writer) error {
 	if err := client.getJSON("/api/v1/vms/"+name, &vm); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nCPU: %d\nMemory: %s\nNetwork: %s\nPrivate IP: %s\n", vm.Name, vm.Phase, vm.Image, vm.CPU, vm.Memory, vm.Network, vm.PrivateIP)
+	_, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nCPU: %d\nMemory: %s\nNetwork: %s\nSubnet: %s\nPrivate IP: %s\nAttachments: %s\n", vm.Name, vm.Phase, vm.Image, vm.CPU, vm.Memory, vm.Network, valueOrUnknown(vm.SubnetRef), vm.PrivateIP, formatAttachments(vm.NetworkAttachments))
 	return err
 }
 func runAction(client Client, action, name string, out io.Writer) error {
@@ -152,4 +157,22 @@ func (c Client) postNoBody(path string) error {
 		return fmt.Errorf("api error: %s", resp.Status)
 	}
 	return nil
+}
+
+func valueOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
+}
+
+func formatAttachments(items []networkAttachment) string {
+	if len(items) == 0 {
+		return "none"
+	}
+	parts := make([]string, 0, len(items))
+	for _, item := range items {
+		parts = append(parts, fmt.Sprintf("%s(%s/%s, primary=%t)", item.Name, valueOrUnknown(item.Network), valueOrUnknown(item.SubnetRef), item.Primary))
+	}
+	return strings.Join(parts, ", ")
 }

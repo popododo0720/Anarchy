@@ -18,18 +18,23 @@ type CreateVMRequest struct {
 }
 
 type VMSummary struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Image     string `json:"image"`
-	PrivateIP string `json:"privateIp"`
+	Name               string              `json:"name"`
+	Phase              string              `json:"phase"`
+	Image              string              `json:"image"`
+	Network            string              `json:"network,omitempty"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	PrivateIP          string              `json:"privateIp"`
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 }
 
 type VMDetail struct {
-	Name      string `json:"name"`
-	Phase     string `json:"phase"`
-	Image     string `json:"image"`
-	CPU       int    `json:"cpu"`
-	Memory    string `json:"memory"`
-	Network   string `json:"network"`
-	PrivateIP string `json:"privateIp"`
+	Name               string              `json:"name"`
+	Phase              string              `json:"phase"`
+	Image              string              `json:"image"`
+	CPU                int                 `json:"cpu"`
+	Memory             string              `json:"memory"`
+	Network            string              `json:"network"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	PrivateIP          string              `json:"privateIp"`
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 }

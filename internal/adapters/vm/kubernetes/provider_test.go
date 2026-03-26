@@ -45,7 +45,7 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 
 func TestListVMsParsesVirtualMachines(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
-		"kubectl -n anarchy-system get virtualmachines -o json":         `{"items":[{"metadata":{"name":"vm1"},"spec":{"template":{"spec":{"domain":{"cpu":{"cores":2},"resources":{"requests":{"memory":"4Gi"}}}}}},"status":{"printableStatus":"Running"}}]}`,
+		"kubectl -n anarchy-system get virtualmachines -o json":         `{"items":[{"metadata":{"name":"vm1"},"spec":{"template":{"spec":{"domain":{"cpu":{"cores":2},"resources":{"requests":{"memory":"4Gi"}}},"networks":[{"name":"tenant-a"}]},"metadata":{"annotations":{"anarchy.io/image":"ubuntu-24.04","anarchy.io/subnet":"tenant-a"}}}},"status":{"printableStatus":"Running"}}]}`,
 		"kubectl -n anarchy-system get virtualmachineinstances -o json": `{"items":[{"metadata":{"name":"vm1"},"status":{"interfaces":[{"ipAddress":"10.0.0.10"}]}}]}`,
 	}}
 	provider := kubevm.NewProvider(runner, "anarchy-system")
@@ -54,8 +54,11 @@ func TestListVMsParsesVirtualMachines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListVMs() error = %v", err)
 	}
-	if len(got) != 1 || got[0].Name != "vm1" || got[0].PrivateIP != "10.0.0.10" {
+	if len(got) != 1 || got[0].Name != "vm1" || got[0].PrivateIP != "10.0.0.10" || got[0].Network != "tenant-a" || got[0].SubnetRef != "tenant-a" {
 		t.Fatalf("ListVMs() = %#v", got)
+	}
+	if len(got[0].NetworkAttachments) != 1 || got[0].NetworkAttachments[0].SubnetRef != "tenant-a" {
+		t.Fatalf("attachments = %#v", got[0].NetworkAttachments)
 	}
 }
 
@@ -70,8 +73,11 @@ func TestGetVMReturnsDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetVM() error = %v", err)
 	}
-	if got.Name != "vm1" || got.Network != "default" || got.Image != "ubuntu-24.04" {
+	if got.Name != "vm1" || got.Network != "default" || got.Image != "ubuntu-24.04" || got.SubnetRef != "default" {
 		t.Fatalf("GetVM() = %#v", got)
+	}
+	if len(got.NetworkAttachments) != 1 || got.NetworkAttachments[0].Name != "default" || !got.NetworkAttachments[0].Primary {
+		t.Fatalf("attachments = %#v", got.NetworkAttachments)
 	}
 }
 

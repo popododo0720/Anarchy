@@ -144,11 +144,22 @@ func (p Provider) ListVMs(ctx context.Context) ([]domainvm.VMSummary, error) {
 	}
 	items := make([]domainvm.VMSummary, 0, len(vms.Items))
 	for _, item := range vms.Items {
+		network := ""
+		if len(item.Spec.Template.Spec.Networks) > 0 {
+			network = item.Spec.Template.Spec.Networks[0].Name
+		}
+		subnet := item.Spec.Template.Metadata.Annotations["anarchy.io/subnet"]
+		if subnet == "" {
+			subnet = network
+		}
 		items = append(items, domainvm.VMSummary{
-			Name:      item.Metadata.Name,
-			Phase:     item.Status.PrintableStatus,
-			Image:     item.Spec.Template.Metadata.Annotations["anarchy.io/image"],
-			PrivateIP: ipByName[item.Metadata.Name],
+			Name:               item.Metadata.Name,
+			Phase:              item.Status.PrintableStatus,
+			Image:              item.Spec.Template.Metadata.Annotations["anarchy.io/image"],
+			Network:            network,
+			SubnetRef:          subnet,
+			PrivateIP:          ipByName[item.Metadata.Name],
+			NetworkAttachments: []domainvm.NetworkAttachment{{Name: network, Network: network, SubnetRef: subnet, Primary: true}},
 		})
 	}
 	return items, nil
@@ -179,14 +190,20 @@ func (p Provider) GetVM(ctx context.Context, name string) (domainvm.VMDetail, er
 	if len(vm.Spec.Template.Spec.Networks) > 0 {
 		network = vm.Spec.Template.Spec.Networks[0].Name
 	}
+	subnet := vm.Spec.Template.Metadata.Annotations["anarchy.io/subnet"]
+	if subnet == "" {
+		subnet = network
+	}
 	return domainvm.VMDetail{
-		Name:      vm.Metadata.Name,
-		Phase:     vm.Status.PrintableStatus,
-		Image:     vm.Spec.Template.Metadata.Annotations["anarchy.io/image"],
-		CPU:       vm.Spec.Template.Spec.Domain.CPU.Cores,
-		Memory:    vm.Spec.Template.Spec.Domain.Resources.Requests.Memory,
-		Network:   network,
-		PrivateIP: privateIP,
+		Name:               vm.Metadata.Name,
+		Phase:              vm.Status.PrintableStatus,
+		Image:              vm.Spec.Template.Metadata.Annotations["anarchy.io/image"],
+		CPU:                vm.Spec.Template.Spec.Domain.CPU.Cores,
+		Memory:             vm.Spec.Template.Spec.Domain.Resources.Requests.Memory,
+		Network:            network,
+		SubnetRef:          subnet,
+		PrivateIP:          privateIP,
+		NetworkAttachments: []domainvm.NetworkAttachment{{Name: network, Network: network, SubnetRef: subnet, Primary: true}},
 	}, nil
 }
 
@@ -251,6 +268,7 @@ spec:
     metadata:
       annotations:
         anarchy.io/image: %s
+        anarchy.io/subnet: %s
     spec:
       domain:
         cpu:
@@ -273,7 +291,7 @@ spec:
         - name: rootdisk
           dataVolume:
             name: %s
-`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, req.CPU, req.Memory, networkName, networkName, rootDiskName)
+`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, networkName, req.CPU, req.Memory, networkName, networkName, rootDiskName)
 	if _, err := file.WriteString(manifest); err != nil {
 		file.Close()
 		return "", err

@@ -16,13 +16,13 @@ import (
 type fakeHTTPProvider struct{}
 
 func (fakeHTTPProvider) CreateVM(context.Context, domainvm.CreateVMRequest) (domainvm.VMDetail, error) {
-	return domainvm.VMDetail{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "default"}, nil
+	return domainvm.VMDetail{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "tenant-a", SubnetRef: "tenant-a", PrivateIP: "10.0.0.10", NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic0", Network: "tenant-a", SubnetRef: "tenant-a", Primary: true}}}, nil
 }
 func (fakeHTTPProvider) ListVMs(context.Context) ([]domainvm.VMSummary, error) {
-	return []domainvm.VMSummary{{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", PrivateIP: "10.0.0.10"}}, nil
+	return []domainvm.VMSummary{{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", Network: "tenant-a", SubnetRef: "tenant-a", PrivateIP: "10.0.0.10", NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic0", Network: "tenant-a", SubnetRef: "tenant-a", Primary: true}}}}, nil
 }
 func (fakeHTTPProvider) GetVM(context.Context, string) (domainvm.VMDetail, error) {
-	return domainvm.VMDetail{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "default", PrivateIP: "10.0.0.10"}, nil
+	return domainvm.VMDetail{Name: "vm1", Phase: "Running", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "tenant-a", SubnetRef: "tenant-a", PrivateIP: "10.0.0.10", NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic0", Network: "tenant-a", SubnetRef: "tenant-a", Primary: true}}}, nil
 }
 func (fakeHTTPProvider) StartVM(context.Context, string) error   { return nil }
 func (fakeHTTPProvider) StopVM(context.Context, string) error    { return nil }
