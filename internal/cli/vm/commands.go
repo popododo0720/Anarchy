@@ -31,11 +31,12 @@ type vmDetail struct {
 }
 
 type createVMRequest struct {
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	CPU     int    `json:"cpu"`
-	Memory  string `json:"memory"`
-	Network string `json:"network"`
+	Name      string `json:"name"`
+	Image     string `json:"image"`
+	CPU       int    `json:"cpu"`
+	Memory    string `json:"memory"`
+	Network   string `json:"network"`
+	SubnetRef string `json:"subnetRef,omitempty"`
 }
 
 func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Writer) error {
@@ -46,11 +47,15 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 	switch args[0] {
 	case "create":
 		if len(args) < 6 {
-			return fmt.Errorf("usage: vm create <name> <image> <cpu> <memory> <network>")
+			return fmt.Errorf("usage: vm create <name> <image> <cpu> <memory> <network> [subnetRef]")
 		}
 		cpu := 0
 		fmt.Sscanf(args[3], "%d", &cpu)
-		return runCreate(client, createVMRequest{Name: args[1], Image: args[2], CPU: cpu, Memory: args[4], Network: args[5]}, out)
+		req := createVMRequest{Name: args[1], Image: args[2], CPU: cpu, Memory: args[4], Network: args[5]}
+		if len(args) >= 7 {
+			req.SubnetRef = args[6]
+		}
+		return runCreate(client, req, out)
 	case "list":
 		return runList(client, out)
 	case "show":

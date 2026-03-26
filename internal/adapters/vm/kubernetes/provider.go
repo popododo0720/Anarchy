@@ -213,6 +213,10 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 		return "", err
 	}
 	rootDiskName := req.Name + "-rootdisk"
+	networkName := req.Network
+	if req.SubnetRef != "" {
+		networkName = req.SubnetRef
+	}
 	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
@@ -262,7 +266,7 @@ spec:
         - name: rootdisk
           dataVolume:
             name: %s
-`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, req.CPU, req.Memory, req.Network, req.Network, rootDiskName)
+`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, req.CPU, req.Memory, networkName, networkName, rootDiskName)
 	if _, err := file.WriteString(manifest); err != nil {
 		file.Close()
 		return "", err

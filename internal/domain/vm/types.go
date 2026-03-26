@@ -1,11 +1,12 @@
 package vm
 
 type CreateVMRequest struct {
-	Name    string `json:"name"`
-	Image   string `json:"image"`
-	CPU     int    `json:"cpu"`
-	Memory  string `json:"memory"`
-	Network string `json:"network"`
+	Name      string `json:"name"`
+	Image     string `json:"image"`
+	CPU       int    `json:"cpu"`
+	Memory    string `json:"memory"`
+	Network   string `json:"network"`
+	SubnetRef string `json:"subnetRef,omitempty"`
 }
 
 type VMSummary struct {

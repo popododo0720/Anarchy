@@ -49,6 +49,28 @@ func TestRunShowPrintsReadableDetail(t *testing.T) {
 	}
 }
 
+func TestRunCreateSendsSubnetRef(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/vms" {
+			t.Fatalf("path = %s, want /api/v1/vms", r.URL.Path)
+		}
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		for _, want := range []string{"\"network\":\"default\"", "\"subnetRef\":\"tenant-a\""} {
+			if !bytes.Contains(buf.Bytes(), []byte(want)) {
+				t.Fatalf("body = %s, want %s", buf.String(), want)
+			}
+		}
+		_, _ = w.Write([]byte(`{"name":"vm1","phase":"Provisioning","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"default","privateIp":""}`))
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := clivm.Run([]string{"create", "vm1", "ubuntu-24.04", "2", "4Gi", "default", "tenant-a"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
 func TestRunActionCallsEndpoint(t *testing.T) {
 	called := false
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
