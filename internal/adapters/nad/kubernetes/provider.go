@@ -3,6 +3,8 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 
 	kexec "github.com/popododo0720/anarchy/internal/adapters/kubernetes/exec"
 	domainnad "github.com/popododo0720/anarchy/internal/domain/nad"
@@ -63,6 +65,47 @@ func (p Provider) GetNAD(ctx context.Context, namespace, name string) (domainnad
 	}
 	cfg := parseConfig(item.Spec.Config)
 	return domainnad.NADDetail{Name: item.Metadata.Name, Namespace: item.Metadata.Namespace, Type: cfg.Type, Provider: cfg.Provider, RawConfig: item.Spec.Config}, nil
+}
+
+func (p Provider) CreateNAD(ctx context.Context, req domainnad.CreateNADRequest) (domainnad.NADDetail, error) {
+	manifest, err := p.writeManifest(req)
+	if err != nil {
+		return domainnad.NADDetail{}, err
+	}
+	defer os.Remove(manifest)
+	if _, err := p.runner.Run(ctx, "kubectl", "apply", "-f", manifest); err != nil {
+		return domainnad.NADDetail{}, err
+	}
+	return p.GetNAD(ctx, req.Namespace, req.Name)
+}
+
+func (p Provider) writeManifest(req domainnad.CreateNADRequest) (string, error) {
+	file, err := os.CreateTemp("", "anarchy-nad-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	manifest := fmt.Sprintf(`apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  config: |
+    {
+      "cniVersion": "0.3.1",
+      "type": "%s",
+      "provider": "%s",
+      "server_socket": "%s"
+    }
+`, req.Name, req.Namespace, req.Type, req.Provider, req.ServerSocket)
+	if _, err := file.WriteString(manifest); err != nil {
+		file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return file.Name(), nil
 }
 
 func parseConfig(raw string) configPayload {

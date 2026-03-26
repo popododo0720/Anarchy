@@ -22,3 +22,7 @@ func (s *Service) ListNADs(ctx context.Context) ([]domainnad.NADSummary, error) 
 func (s *Service) GetNAD(ctx context.Context, namespace, name string) (domainnad.NADDetail, error) {
 	return s.provider.GetNAD(ctx, namespace, name)
 }
+
+func (s *Service) CreateNAD(ctx context.Context, req domainnad.CreateNADRequest) (domainnad.NADDetail, error) {
+	return s.provider.CreateNAD(ctx, req)
+}
