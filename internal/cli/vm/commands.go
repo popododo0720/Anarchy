@@ -39,6 +39,7 @@ type networkAttachment struct {
 	Name      string `json:"name"`
 	Network   string `json:"network"`
 	SubnetRef string `json:"subnetRef,omitempty"`
+	NADRef    string `json:"nadRef,omitempty"`
 	Primary   bool   `json:"primary"`
 }
 

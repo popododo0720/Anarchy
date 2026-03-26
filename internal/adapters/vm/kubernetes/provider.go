@@ -259,8 +259,17 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 		if networkName == "" {
 			networkName = attachment.Network
 		}
-		interfacesYAML += fmt.Sprintf("            - name: %s\n              masquerade: {}\n", name)
-		networksYAML += fmt.Sprintf("        - name: %s\n          pod: {}\n", networkName)
+		if attachment.Primary {
+			interfacesYAML += fmt.Sprintf("            - name: %s\n              masquerade: {}\n", name)
+			networksYAML += fmt.Sprintf("        - name: %s\n          pod: {}\n", networkName)
+			continue
+		}
+		nadRef := attachment.NADRef
+		if nadRef == "" {
+			nadRef = networkName
+		}
+		interfacesYAML += fmt.Sprintf("            - name: %s\n              bridge: {}\n", name)
+		networksYAML += fmt.Sprintf("        - name: %s\n          multus:\n            networkName: %s\n", name, nadRef)
 	}
 	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1
 kind: VirtualMachine

@@ -76,7 +76,7 @@ func TestRunCreateAcceptsExplicitAttachmentsJSON(t *testing.T) {
 		buf := new(bytes.Buffer)
 		_, _ = buf.ReadFrom(r.Body)
 		for _, want := range []string{
-			"\"networkAttachments\":[{\"name\":\"nic0\",\"network\":\"default\",\"subnetRef\":\"tenant-a\",\"primary\":true},{\"name\":\"nic1\",\"network\":\"default\",\"subnetRef\":\"tenant-b\",\"primary\":false}]",
+			"\"networkAttachments\":[{\"name\":\"nic0\",\"network\":\"default\",\"subnetRef\":\"tenant-a\",\"primary\":true},{\"name\":\"nic1\",\"network\":\"default\",\"subnetRef\":\"tenant-b\",\"nadRef\":\"anarchy-system/tenant-b-net\",\"primary\":false}]",
 			"\"subnetRef\":\"tenant-a\"",
 		} {
 			if !bytes.Contains(buf.Bytes(), []byte(want)) {
@@ -87,7 +87,7 @@ func TestRunCreateAcceptsExplicitAttachmentsJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	attachments := `[{"name":"nic0","network":"default","subnetRef":"tenant-a","primary":true},{"name":"nic1","network":"default","subnetRef":"tenant-b","primary":false}]`
+	attachments := `[{"name":"nic0","network":"default","subnetRef":"tenant-a","primary":true},{"name":"nic1","network":"default","subnetRef":"tenant-b","nadRef":"anarchy-system/tenant-b-net","primary":false}]`
 	var out bytes.Buffer
 	if err := clivm.Run([]string{"create", "vm2", "ubuntu-24.04", "2", "4Gi", "default", "tenant-a", "--attachments-json", attachments}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)

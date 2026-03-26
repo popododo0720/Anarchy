@@ -89,7 +89,7 @@ func TestCreateVMAppliesManifest(t *testing.T) {
 	}}
 	provider := kubevm.NewProvider(runner, "anarchy-system")
 
-	got, err := provider.CreateVM(context.Background(), domainvm.CreateVMRequest{Name: "vm1", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "default", SubnetRef: "tenant-a", NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic0", Network: "default", SubnetRef: "tenant-a", Primary: true}, {Name: "nic1", Network: "default", SubnetRef: "tenant-b", Primary: false}}})
+	got, err := provider.CreateVM(context.Background(), domainvm.CreateVMRequest{Name: "vm1", Image: "ubuntu-24.04", CPU: 2, Memory: "4Gi", Network: "default", SubnetRef: "tenant-a", NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic0", Network: "default", SubnetRef: "tenant-a", Primary: true}, {Name: "nic1", Network: "default", SubnetRef: "tenant-b", NADRef: "anarchy-system/tenant-b-net", Primary: false}}})
 	if err != nil {
 		t.Fatalf("CreateVM() error = %v", err)
 	}
@@ -118,9 +118,15 @@ func TestCreateVMAppliesManifest(t *testing.T) {
 		"name: ubuntu-24.04",
 		"namespace: anarchy-system",
 		"interfaces:",
+		"- name: nic0",
 		"masquerade: {}",
+		"- name: nic1",
+		"bridge: {}",
 		"- name: tenant-a",
-		"- name: tenant-b",
+		"pod: {}",
+		"- name: nic1",
+		"multus:",
+		"networkName: anarchy-system/tenant-b-net",
 		"dataVolume:",
 		"name: vm1-rootdisk",
 	} {
