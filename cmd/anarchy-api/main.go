@@ -8,6 +8,7 @@ import (
 	diagkube "github.com/popododo0720/anarchy/internal/adapters/diagnose/kubernetes"
 	imagekube "github.com/popododo0720/anarchy/internal/adapters/image/kubernetes"
 	kexec "github.com/popododo0720/anarchy/internal/adapters/kubernetes/exec"
+	nadkube "github.com/popododo0720/anarchy/internal/adapters/nad/kubernetes"
 	networkkube "github.com/popododo0720/anarchy/internal/adapters/network/kubernetes"
 	nodekube "github.com/popododo0720/anarchy/internal/adapters/node/kubernetes"
 	subnetkube "github.com/popododo0720/anarchy/internal/adapters/subnet/kubernetes"
@@ -15,6 +16,7 @@ import (
 	vmkube "github.com/popododo0720/anarchy/internal/adapters/vm/kubernetes"
 	appdiag "github.com/popododo0720/anarchy/internal/application/diagnose"
 	appimage "github.com/popododo0720/anarchy/internal/application/image"
+	appnad "github.com/popododo0720/anarchy/internal/application/nad"
 	appnetwork "github.com/popododo0720/anarchy/internal/application/network"
 	appnode "github.com/popododo0720/anarchy/internal/application/node"
 	appsubnet "github.com/popododo0720/anarchy/internal/application/subnet"
@@ -22,6 +24,7 @@ import (
 	appvm "github.com/popododo0720/anarchy/internal/application/vm"
 	httpdiag "github.com/popododo0720/anarchy/internal/transport/http/diagnose"
 	httpimage "github.com/popododo0720/anarchy/internal/transport/http/image"
+	httpnad "github.com/popododo0720/anarchy/internal/transport/http/nad"
 	httpnetwork "github.com/popododo0720/anarchy/internal/transport/http/network"
 	httpnode "github.com/popododo0720/anarchy/internal/transport/http/node"
 	httpsubnet "github.com/popododo0720/anarchy/internal/transport/http/subnet"
@@ -42,6 +45,7 @@ func main() {
 	runner := kexec.NewCommandRunner()
 	systemHandler := httpsystem.NewHandler(appsystem.NewService(systemkube.NewProvider(runner)))
 	nodeHandler := httpnode.NewHandler(appnode.NewService(nodekube.NewProvider(runner)))
+	nadHandler := httpnad.NewHandler(appnad.NewService(nadkube.NewProvider(runner)))
 	networkHandler := httpnetwork.NewHandler(appnetwork.NewService(networkkube.NewProvider(runner)))
 	subnetHandler := httpsubnet.NewHandler(appsubnet.NewService(subnetkube.NewProvider(runner)))
 	diagnoseHandler := httpdiag.NewHandler(appdiag.NewService(diagkube.NewProvider(runner, namespace)))
@@ -51,6 +55,7 @@ func main() {
 	mux := http.NewServeMux()
 	systemHandler.RegisterRoutes(mux)
 	nodeHandler.RegisterRoutes(mux)
+	nadHandler.RegisterRoutes(mux)
 	networkHandler.RegisterRoutes(mux)
 	subnetHandler.RegisterRoutes(mux)
 	diagnoseHandler.RegisterRoutes(mux)

@@ -7,6 +7,7 @@ import (
 
 	clidiagnose "github.com/popododo0720/anarchy/internal/cli/diagnose"
 	cliimage "github.com/popododo0720/anarchy/internal/cli/image"
+	clinad "github.com/popododo0720/anarchy/internal/cli/nad"
 	clinetwork "github.com/popododo0720/anarchy/internal/cli/network"
 	clinode "github.com/popododo0720/anarchy/internal/cli/node"
 	clisubnet "github.com/popododo0720/anarchy/internal/cli/subnet"
@@ -26,6 +27,8 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 		return clinode.Run(args[1:], apiBaseURL, httpClient, out)
 	case "network":
 		return clinetwork.Run(args[1:], apiBaseURL, httpClient, out)
+	case "nad":
+		return clinad.Run(args[1:], apiBaseURL, httpClient, out)
 	case "subnet":
 		return clisubnet.Run(args[1:], apiBaseURL, httpClient, out)
 	case "image":
