@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	appsubnet "github.com/popododo0720/anarchy/internal/application/subnet"
@@ -20,6 +21,10 @@ func (fakeProvider) ListSubnets(context.Context) ([]domainsubnet.SubnetSummary, 
 
 func (fakeProvider) GetSubnet(context.Context, string) (domainsubnet.SubnetDetail, error) {
 	return domainsubnet.SubnetDetail{Name: "ovn-default", CIDR: "10.16.0.0/16", Gateway: "10.16.0.1", Protocol: "IPv4", Provider: "ovn", Network: "ovn-cluster", Namespaces: []string{"anarchy-system"}}, nil
+}
+
+func (fakeProvider) CreateSubnet(context.Context, domainsubnet.CreateSubnetRequest) (domainsubnet.SubnetDetail, error) {
+	return domainsubnet.SubnetDetail{Name: "tenant-c", CIDR: "10.18.0.0/24", Gateway: "10.18.0.1", Protocol: "IPv4", Provider: "tenant-c-net.anarchy-system.ovn", Network: "ovn-cluster", Namespaces: []string{"anarchy-system"}}, nil
 }
 
 func TestListSubnetsHandlerReturnsStructuredSummary(t *testing.T) {
@@ -55,6 +60,24 @@ func TestGetSubnetHandlerReturnsStructuredDetail(t *testing.T) {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 	if body["network"] != "ovn-cluster" {
+		t.Fatalf("body = %#v", body)
+	}
+}
+
+func TestCreateSubnetHandlerReturnsStructuredDetail(t *testing.T) {
+	handler := httpsubnet.NewHandler(appsubnet.NewService(fakeProvider{}))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/subnets", strings.NewReader(`{"name":"tenant-c","cidr":"10.18.0.0/24","gateway":"10.18.0.1","protocol":"IPv4","provider":"tenant-c-net.anarchy-system.ovn","network":"ovn-cluster","namespaces":["anarchy-system"]}`))
+	res := httptest.NewRecorder()
+
+	handler.CreateSubnet(res, req)
+	if res.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusCreated)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if body["name"] != "tenant-c" {
 		t.Fatalf("body = %#v", body)
 	}
 }

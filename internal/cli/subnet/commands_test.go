@@ -48,3 +48,28 @@ func TestRunShowPrintsSubnetDetail(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCreatePostsSubnetRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/subnets" {
+			t.Fatalf("path = %s, want /api/v1/subnets", r.URL.Path)
+		}
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		for _, want := range []string{"\"name\":\"tenant-c\"", "\"cidr\":\"10.18.0.0/24\"", "\"provider\":\"tenant-c-net.anarchy-system.ovn\""} {
+			if !bytes.Contains(buf.Bytes(), []byte(want)) {
+				t.Fatalf("body = %s, want %s", buf.String(), want)
+			}
+		}
+		_, _ = w.Write([]byte(`{"name":"tenant-c","cidr":"10.18.0.0/24","gateway":"10.18.0.1","protocol":"IPv4","provider":"tenant-c-net.anarchy-system.ovn","network":"ovn-cluster","namespaces":["anarchy-system"]}`))
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := clisubnet.Run([]string{"create", "tenant-c", "10.18.0.0/24", "10.18.0.1", "IPv4", "tenant-c-net.anarchy-system.ovn", "ovn-cluster", "anarchy-system"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Created subnet: tenant-c")) {
+		t.Fatalf("output = %q", out.String())
+	}
+}

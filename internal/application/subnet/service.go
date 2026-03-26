@@ -22,3 +22,7 @@ func (s *Service) ListSubnets(ctx context.Context) ([]domainsubnet.SubnetSummary
 func (s *Service) GetSubnet(ctx context.Context, name string) (domainsubnet.SubnetDetail, error) {
 	return s.provider.GetSubnet(ctx, name)
 }
+
+func (s *Service) CreateSubnet(ctx context.Context, req domainsubnet.CreateSubnetRequest) (domainsubnet.SubnetDetail, error) {
+	return s.provider.CreateSubnet(ctx, req)
+}
