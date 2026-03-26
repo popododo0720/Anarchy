@@ -33,7 +33,7 @@ func TestCreateVMHandlerReturnsStructuredDetail(t *testing.T) {
 	service := appvm.NewService(fakeHTTPProvider{})
 	handler := httpvm.NewHandler(service)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/vms", strings.NewReader(`{"name":"vm1","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"default","subnetRef":"tenant-a"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/vms", strings.NewReader(`{"name":"vm1","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"default","subnetRef":"tenant-a","networkAttachments":[{"name":"nic0","network":"default","subnetRef":"tenant-a","primary":true}]}`))
 	res := httptest.NewRecorder()
 
 	handler.CreateVM(res, req)

@@ -214,7 +214,14 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 	}
 	rootDiskName := req.Name + "-rootdisk"
 	networkName := req.Network
-	if req.SubnetRef != "" {
+	if len(req.NetworkAttachments) > 0 {
+		attachment := req.NetworkAttachments[0]
+		if attachment.SubnetRef != "" {
+			networkName = attachment.SubnetRef
+		} else if attachment.Network != "" {
+			networkName = attachment.Network
+		}
+	} else if req.SubnetRef != "" {
 		networkName = req.SubnetRef
 	}
 	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1

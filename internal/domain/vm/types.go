@@ -1,12 +1,20 @@
 package vm
 
-type CreateVMRequest struct {
+type NetworkAttachment struct {
 	Name      string `json:"name"`
-	Image     string `json:"image"`
-	CPU       int    `json:"cpu"`
-	Memory    string `json:"memory"`
 	Network   string `json:"network"`
 	SubnetRef string `json:"subnetRef,omitempty"`
+	Primary   bool   `json:"primary"`
+}
+
+type CreateVMRequest struct {
+	Name               string              `json:"name"`
+	Image              string              `json:"image"`
+	CPU                int                 `json:"cpu"`
+	Memory             string              `json:"memory"`
+	Network            string              `json:"network"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	NetworkAttachments []NetworkAttachment `json:"networkAttachments,omitempty"`
 }
 
 type VMSummary struct {

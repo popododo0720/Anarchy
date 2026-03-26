@@ -49,14 +49,14 @@ func TestRunShowPrintsReadableDetail(t *testing.T) {
 	}
 }
 
-func TestRunCreateSendsSubnetRef(t *testing.T) {
+func TestRunCreateSendsNetworkAttachments(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/vms" {
 			t.Fatalf("path = %s, want /api/v1/vms", r.URL.Path)
 		}
 		buf := new(bytes.Buffer)
 		_, _ = buf.ReadFrom(r.Body)
-		for _, want := range []string{"\"network\":\"default\"", "\"subnetRef\":\"tenant-a\""} {
+		for _, want := range []string{"\"network\":\"default\"", "\"subnetRef\":\"tenant-a\"", "\"networkAttachments\":[{"} {
 			if !bytes.Contains(buf.Bytes(), []byte(want)) {
 				t.Fatalf("body = %s, want %s", buf.String(), want)
 			}

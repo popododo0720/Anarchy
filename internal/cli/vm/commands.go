@@ -30,13 +30,21 @@ type vmDetail struct {
 	PrivateIP string `json:"privateIp"`
 }
 
-type createVMRequest struct {
+type networkAttachment struct {
 	Name      string `json:"name"`
-	Image     string `json:"image"`
-	CPU       int    `json:"cpu"`
-	Memory    string `json:"memory"`
 	Network   string `json:"network"`
 	SubnetRef string `json:"subnetRef,omitempty"`
+	Primary   bool   `json:"primary"`
+}
+
+type createVMRequest struct {
+	Name               string              `json:"name"`
+	Image              string              `json:"image"`
+	CPU                int                 `json:"cpu"`
+	Memory             string              `json:"memory"`
+	Network            string              `json:"network"`
+	SubnetRef          string              `json:"subnetRef,omitempty"`
+	NetworkAttachments []networkAttachment `json:"networkAttachments,omitempty"`
 }
 
 func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Writer) error {
@@ -55,6 +63,7 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 		if len(args) >= 7 {
 			req.SubnetRef = args[6]
 		}
+		req.NetworkAttachments = []networkAttachment{{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Primary: true}}
 		return runCreate(client, req, out)
 	case "list":
 		return runList(client, out)
