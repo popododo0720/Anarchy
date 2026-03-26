@@ -22,6 +22,12 @@ func TestChartIncludesServiceAccountAndClusterRBACTemplates(t *testing.T) {
 			t.Fatalf("expected %s to exist: %v", name, err)
 		}
 	}
+	clusterRole := readChartFile(t, "templates/clusterrole.yaml")
+	for _, want := range []string{"virtualmachines", "datavolumes", "\"create\"", "\"update\"", "\"patch\"", "\"delete\""} {
+		if !strings.Contains(clusterRole, want) {
+			t.Fatalf("clusterrole.yaml missing %q\n%s", want, clusterRole)
+		}
+	}
 }
 
 func TestChartValuesAndDeploymentSupportNamespaceConfig(t *testing.T) {
