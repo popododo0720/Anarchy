@@ -32,7 +32,7 @@ func TestChartValuesAndDeploymentSupportNamespaceConfig(t *testing.T) {
 			t.Fatalf("values.yaml missing %q\n%s", want, values)
 		}
 	}
-	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace", "with .Values.nodeSelector"} {
+	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace", "with .Values.nodeSelector", "timeoutSeconds: 5", "failureThreshold: 6"} {
 		if !strings.Contains(deployment, want) {
 			t.Fatalf("deployment.yaml missing %q\n%s", want, deployment)
 		}

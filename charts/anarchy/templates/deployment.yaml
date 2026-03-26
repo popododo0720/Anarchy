@@ -32,13 +32,17 @@ spec:
             httpGet:
               path: /api/v1/system/health
               port: 8080
-            initialDelaySeconds: 5
+            initialDelaySeconds: 10
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /api/v1/system/health
               port: 8080
-            initialDelaySeconds: 15
+            initialDelaySeconds: 30
             periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
