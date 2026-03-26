@@ -27,12 +27,12 @@ func TestChartIncludesServiceAccountAndClusterRBACTemplates(t *testing.T) {
 func TestChartValuesAndDeploymentSupportNamespaceConfig(t *testing.T) {
 	values := readChartFile(t, "values.yaml")
 	deployment := readChartFile(t, "templates/deployment.yaml")
-	for _, want := range []string{"serviceAccount:", "config:", "namespace:", "nodeSelector:"} {
+	for _, want := range []string{"serviceAccount:", "config:", "namespace:", "nodeSelector:", "imagePullSecrets:"} {
 		if !strings.Contains(values, want) {
 			t.Fatalf("values.yaml missing %q\n%s", want, values)
 		}
 	}
-	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace", "with .Values.nodeSelector", "timeoutSeconds: 5", "failureThreshold: 6"} {
+	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace", "with .Values.nodeSelector", "with .Values.imagePullSecrets", "timeoutSeconds: 5", "failureThreshold: 6"} {
 		if !strings.Contains(deployment, want) {
 			t.Fatalf("deployment.yaml missing %q\n%s", want, deployment)
 		}
