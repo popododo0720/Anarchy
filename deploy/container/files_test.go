@@ -14,7 +14,7 @@ func TestDockerfileExistsForHelmDeploymentImage(t *testing.T) {
 		t.Fatalf("read Dockerfile: %v", err)
 	}
 	text := string(content)
-	for _, want := range []string{"FROM golang:", "apk add --no-cache ca-certificates kubectl", "anarchy-api", "ENTRYPOINT"} {
+	for _, want := range []string{"FROM golang:", "ENV GOTOOLCHAIN=auto", "apk add --no-cache ca-certificates kubectl", "anarchy-api", "ENTRYPOINT"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("Dockerfile missing %q\n%s", want, text)
 		}

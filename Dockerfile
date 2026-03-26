@@ -1,4 +1,5 @@
 FROM golang:1.24-bookworm AS builder
+ENV GOTOOLCHAIN=auto
 WORKDIR /src
 COPY go.mod ./
 COPY cmd ./cmd
