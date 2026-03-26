@@ -230,16 +230,37 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 		return "", err
 	}
 	rootDiskName := req.Name + "-rootdisk"
-	networkName := req.Network
-	if len(req.NetworkAttachments) > 0 {
-		attachment := req.NetworkAttachments[0]
-		if attachment.SubnetRef != "" {
-			networkName = attachment.SubnetRef
-		} else if attachment.Network != "" {
+	attachments := req.NetworkAttachments
+	if len(attachments) == 0 {
+		fallback := domainvm.NetworkAttachment{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Primary: true}
+		attachments = []domainvm.NetworkAttachment{fallback}
+	}
+	primary := attachments[0]
+	if !primary.Primary {
+		for _, attachment := range attachments {
+			if attachment.Primary {
+				primary = attachment
+				break
+			}
+		}
+	}
+	primarySubnet := primary.SubnetRef
+	if primarySubnet == "" {
+		primarySubnet = primary.Network
+	}
+	interfacesYAML := ""
+	networksYAML := ""
+	for i, attachment := range attachments {
+		name := attachment.Name
+		if name == "" {
+			name = fmt.Sprintf("nic%d", i)
+		}
+		networkName := attachment.SubnetRef
+		if networkName == "" {
 			networkName = attachment.Network
 		}
-	} else if req.SubnetRef != "" {
-		networkName = req.SubnetRef
+		interfacesYAML += fmt.Sprintf("            - name: %s\n              masquerade: {}\n", name)
+		networksYAML += fmt.Sprintf("        - name: %s\n          pod: {}\n", networkName)
 	}
 	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -282,16 +303,12 @@ spec:
               disk:
                 bus: virtio
           interfaces:
-            - name: %s
-              masquerade: {}
-      networks:
-        - name: %s
-          pod: {}
-      volumes:
+%s      networks:
+%s      volumes:
         - name: rootdisk
           dataVolume:
             name: %s
-`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, networkName, req.CPU, req.Memory, networkName, networkName, rootDiskName)
+`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, primarySubnet, req.CPU, req.Memory, interfacesYAML, networksYAML, rootDiskName)
 	if _, err := file.WriteString(manifest); err != nil {
 		file.Close()
 		return "", err

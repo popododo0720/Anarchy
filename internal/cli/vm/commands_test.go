@@ -61,12 +61,35 @@ func TestRunCreateSendsNetworkAttachments(t *testing.T) {
 				t.Fatalf("body = %s, want %s", buf.String(), want)
 			}
 		}
-		_, _ = w.Write([]byte(`{"name":"vm1","phase":"Provisioning","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"default","privateIp":""}`))
+		_, _ = w.Write([]byte(`{"name":"vm1","phase":"Provisioning","image":"ubuntu-24.04","network":"default","privateIp":""}`))
 	}))
 	defer server.Close()
 
 	var out bytes.Buffer
 	if err := clivm.Run([]string{"create", "vm1", "ubuntu-24.04", "2", "4Gi", "default", "tenant-a"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestRunCreateAcceptsExplicitAttachmentsJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		for _, want := range []string{
+			"\"networkAttachments\":[{\"name\":\"nic0\",\"network\":\"default\",\"subnetRef\":\"tenant-a\",\"primary\":true},{\"name\":\"nic1\",\"network\":\"default\",\"subnetRef\":\"tenant-b\",\"primary\":false}]",
+			"\"subnetRef\":\"tenant-a\"",
+		} {
+			if !bytes.Contains(buf.Bytes(), []byte(want)) {
+				t.Fatalf("body = %s, want %s", buf.String(), want)
+			}
+		}
+		_, _ = w.Write([]byte(`{"name":"vm2","phase":"Provisioning","image":"ubuntu-24.04","network":"default","privateIp":""}`))
+	}))
+	defer server.Close()
+
+	attachments := `[{"name":"nic0","network":"default","subnetRef":"tenant-a","primary":true},{"name":"nic1","network":"default","subnetRef":"tenant-b","primary":false}]`
+	var out bytes.Buffer
+	if err := clivm.Run([]string{"create", "vm2", "ubuntu-24.04", "2", "4Gi", "default", "tenant-a", "--attachments-json", attachments}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 }

@@ -65,10 +65,22 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 		cpu := 0
 		fmt.Sscanf(args[3], "%d", &cpu)
 		req := createVMRequest{Name: args[1], Image: args[2], CPU: cpu, Memory: args[4], Network: args[5]}
-		if len(args) >= 7 {
-			req.SubnetRef = args[6]
+		remaining := args[6:]
+		if len(remaining) > 0 && remaining[0] != "--attachments-json" {
+			req.SubnetRef = remaining[0]
+			remaining = remaining[1:]
 		}
-		req.NetworkAttachments = []networkAttachment{{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Primary: true}}
+		if len(remaining) >= 2 && remaining[0] == "--attachments-json" {
+			if err := json.Unmarshal([]byte(remaining[1]), &req.NetworkAttachments); err != nil {
+				return fmt.Errorf("invalid attachments json: %w", err)
+			}
+		}
+		if len(req.NetworkAttachments) == 0 {
+			req.NetworkAttachments = []networkAttachment{{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Primary: true}}
+		}
+		if req.SubnetRef == "" && len(req.NetworkAttachments) > 0 {
+			req.SubnetRef = req.NetworkAttachments[0].SubnetRef
+		}
 		return runCreate(client, req, out)
 	case "list":
 		return runList(client, out)
