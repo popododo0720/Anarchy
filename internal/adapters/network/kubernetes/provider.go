@@ -3,6 +3,8 @@ package kubernetes
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"os"
 
 	kexec "github.com/popododo0720/anarchy/internal/adapters/kubernetes/exec"
 	domainnetwork "github.com/popododo0720/anarchy/internal/domain/network"
@@ -68,4 +70,36 @@ func (p Provider) GetNetwork(ctx context.Context, name string) (domainnetwork.Ne
 		DefaultSubnet: item.Status.DefaultLogicalSwitch,
 		Subnets:       item.Status.Subnets,
 	}, nil
+}
+
+func (p Provider) CreateNetwork(ctx context.Context, req domainnetwork.CreateNetworkRequest) (domainnetwork.NetworkDetail, error) {
+	manifest, err := p.writeManifest(req)
+	if err != nil {
+		return domainnetwork.NetworkDetail{}, err
+	}
+	defer os.Remove(manifest)
+	if _, err := p.runner.Run(ctx, "kubectl", "apply", "-f", manifest); err != nil {
+		return domainnetwork.NetworkDetail{}, err
+	}
+	return p.GetNetwork(ctx, req.Name)
+}
+
+func (p Provider) writeManifest(req domainnetwork.CreateNetworkRequest) (string, error) {
+	file, err := os.CreateTemp("", "anarchy-network-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	manifest := fmt.Sprintf(`apiVersion: kubeovn.io/v1
+kind: Vpc
+metadata:
+  name: %s
+`, req.Name)
+	if _, err := file.WriteString(manifest); err != nil {
+		file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return file.Name(), nil
 }

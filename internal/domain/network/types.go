@@ -1,5 +1,9 @@
 package network
 
+type CreateNetworkRequest struct {
+	Name string `json:"name"`
+}
+
 type NetworkSummary struct {
 	Name          string `json:"name"`
 	Default       bool   `json:"default"`

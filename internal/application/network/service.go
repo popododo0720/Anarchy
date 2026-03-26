@@ -22,3 +22,7 @@ func (s *Service) ListNetworks(ctx context.Context) ([]domainnetwork.NetworkSumm
 func (s *Service) GetNetwork(ctx context.Context, name string) (domainnetwork.NetworkDetail, error) {
 	return s.provider.GetNetwork(ctx, name)
 }
+
+func (s *Service) CreateNetwork(ctx context.Context, req domainnetwork.CreateNetworkRequest) (domainnetwork.NetworkDetail, error) {
+	return s.provider.CreateNetwork(ctx, req)
+}

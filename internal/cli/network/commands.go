@@ -1,6 +1,7 @@
 package network
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,6 +28,10 @@ type networkDetail struct {
 	Subnets       []string `json:"subnets"`
 }
 
+type createNetworkRequest struct {
+	Name string `json:"name"`
+}
+
 func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing network subcommand")
@@ -40,6 +45,11 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 			return fmt.Errorf("missing network name")
 		}
 		return runShow(client, args[1], out)
+	case "create":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: network create <name>")
+		}
+		return runCreate(client, createNetworkRequest{Name: args[1]}, out)
 	default:
 		return fmt.Errorf("unknown network subcommand: %s", args[0])
 	}
@@ -67,8 +77,30 @@ func runShow(client Client, name string, out io.Writer) error {
 	return err
 }
 
+func runCreate(client Client, req createNetworkRequest, out io.Writer) error {
+	var network networkDetail
+	if err := client.postJSON("/api/v1/networks", req, &network); err != nil {
+		return err
+	}
+	_, err := fmt.Fprintf(out, "Created network: %s\n", network.Name)
+	return err
+}
+
 func (c Client) getJSON(path string, target any) error {
 	resp, err := c.HTTPClient.Get(c.BaseURL + path)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("api error: %s", resp.Status)
+	}
+	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func (c Client) postJSON(path string, body any, target any) error {
+	data, _ := json.Marshal(body)
+	resp, err := c.HTTPClient.Post(c.BaseURL+path, "application/json", bytes.NewReader(data))
 	if err != nil {
 		return err
 	}

@@ -48,3 +48,26 @@ func TestRunShowPrintsNetworkDetail(t *testing.T) {
 		}
 	}
 }
+
+func TestRunCreatePostsNetworkRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/networks" {
+			t.Fatalf("path = %s, want /api/v1/networks", r.URL.Path)
+		}
+		buf := new(bytes.Buffer)
+		_, _ = buf.ReadFrom(r.Body)
+		if !bytes.Contains(buf.Bytes(), []byte(`"name":"tenant-c"`)) {
+			t.Fatalf("body = %s", buf.String())
+		}
+		_, _ = w.Write([]byte(`{"name":"tenant-c","default":false,"router":"tenant-c","defaultSubnet":"tenant-c-subnet","subnets":["tenant-c-subnet"]}`))
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	if err := clinetwork.Run([]string{"create", "tenant-c"}, server.URL, server.Client(), &out); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if !bytes.Contains(out.Bytes(), []byte("Created network: tenant-c")) {
+		t.Fatalf("output = %q", out.String())
+	}
+}
