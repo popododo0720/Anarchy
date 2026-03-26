@@ -38,6 +38,7 @@ Represents workload attachment to a subnet.
 Initial Kube-OVN/KubeVirt mapping:
 - one primary NIC per VM
 - maps to KubeVirt network/interface plus the launcher pod's OVN allocation
+- each NIC may carry a semantic role such as `external`, `internal`, `backend`, `storage`, or later `provider`
 
 ## 4. Initial implementation narrowing
 The first code increment may start with:
