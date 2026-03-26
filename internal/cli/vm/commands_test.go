@@ -14,7 +14,7 @@ func TestRunListPrintsReadableSummary(t *testing.T) {
 		if r.URL.Path != "/api/v1/vms" {
 			t.Fatalf("path = %s, want /api/v1/vms", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`[{"name":"vm1","phase":"Running","image":"ubuntu-24.04","network":"tenant-a","subnetRef":"tenant-a","privateIp":"10.0.0.10","networkAttachments":[{"name":"nic0","network":"tenant-a","subnetRef":"tenant-a","primary":true}]}]`))
+		_, _ = w.Write([]byte(`[{"name":"vm1","phase":"Running","image":"ubuntu-24.04","network":"tenant-a","subnetRef":"tenant-a","privateIp":"10.0.0.10","networkAttachments":[{"name":"nic0","network":"tenant-a","subnetRef":"tenant-a","role":"external","ipAddress":"10.0.0.10","primary":true}]}]`))
 	}))
 	defer server.Close()
 
@@ -22,7 +22,7 @@ func TestRunListPrintsReadableSummary(t *testing.T) {
 	if err := clivm.Run([]string{"list"}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Name: vm1", "Phase: Running", "Network: tenant-a", "Subnet: tenant-a", "Private IP: 10.0.0.10"} {
+	for _, want := range []string{"Name: vm1", "Phase: Running", "Network: tenant-a", "Subnet: tenant-a", "Private IP: 10.0.0.10", "Attachments: nic0[external](tenant-a/tenant-a, nad=unknown, ip=10.0.0.10, primary=true)"} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {
 			t.Fatalf("output = %q, want %q", out.String(), want)
 		}
@@ -34,7 +34,7 @@ func TestRunShowPrintsReadableDetail(t *testing.T) {
 		if r.URL.Path != "/api/v1/vms/vm1" {
 			t.Fatalf("path = %s, want /api/v1/vms/vm1", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"name":"vm1","phase":"Running","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"tenant-a","subnetRef":"tenant-a","privateIp":"10.0.0.10","networkAttachments":[{"name":"nic0","network":"tenant-a","subnetRef":"tenant-a","primary":true}]}`))
+		_, _ = w.Write([]byte(`{"name":"vm1","phase":"Running","image":"ubuntu-24.04","cpu":2,"memory":"4Gi","network":"tenant-a","subnetRef":"tenant-a","privateIp":"10.0.0.10","networkAttachments":[{"name":"nic0","network":"tenant-a","subnetRef":"tenant-a","role":"external","ipAddress":"10.0.0.10","primary":true}]}`))
 	}))
 	defer server.Close()
 
@@ -42,7 +42,7 @@ func TestRunShowPrintsReadableDetail(t *testing.T) {
 	if err := clivm.Run([]string{"show", "vm1"}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Name: vm1", "Image: ubuntu-24.04", "Network: tenant-a", "Subnet: tenant-a", "Attachments: nic0(tenant-a/tenant-a, primary=true)"} {
+	for _, want := range []string{"Name: vm1", "Image: ubuntu-24.04", "Network: tenant-a", "Subnet: tenant-a", "Attachments: nic0[external](tenant-a/tenant-a, nad=unknown, ip=10.0.0.10, primary=true)"} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {
 			t.Fatalf("output = %q, want %q", out.String(), want)
 		}
@@ -76,7 +76,7 @@ func TestRunCreateAcceptsExplicitAttachmentsJSON(t *testing.T) {
 		buf := new(bytes.Buffer)
 		_, _ = buf.ReadFrom(r.Body)
 		for _, want := range []string{
-			"\"networkAttachments\":[{\"name\":\"nic0\",\"network\":\"default\",\"subnetRef\":\"tenant-a\",\"primary\":true},{\"name\":\"nic1\",\"network\":\"default\",\"subnetRef\":\"tenant-b\",\"nadRef\":\"anarchy-system/tenant-b-net\",\"primary\":false}]",
+			"\"networkAttachments\":[{\"name\":\"nic0\",\"network\":\"default\",\"subnetRef\":\"tenant-a\",\"role\":\"external\",\"primary\":true},{\"name\":\"nic1\",\"network\":\"default\",\"subnetRef\":\"tenant-b\",\"nadRef\":\"anarchy-system/tenant-b-net\",\"role\":\"internal\",\"primary\":false}]",
 			"\"subnetRef\":\"tenant-a\"",
 		} {
 			if !bytes.Contains(buf.Bytes(), []byte(want)) {
@@ -87,7 +87,7 @@ func TestRunCreateAcceptsExplicitAttachmentsJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	attachments := `[{"name":"nic0","network":"default","subnetRef":"tenant-a","primary":true},{"name":"nic1","network":"default","subnetRef":"tenant-b","nadRef":"anarchy-system/tenant-b-net","primary":false}]`
+	attachments := `[{"name":"nic0","network":"default","subnetRef":"tenant-a","role":"external","primary":true},{"name":"nic1","network":"default","subnetRef":"tenant-b","nadRef":"anarchy-system/tenant-b-net","role":"internal","primary":false}]`
 	var out bytes.Buffer
 	if err := clivm.Run([]string{"create", "vm2", "ubuntu-24.04", "2", "4Gi", "default", "tenant-a", "--attachments-json", attachments}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)

@@ -40,6 +40,8 @@ type networkAttachment struct {
 	Network   string `json:"network"`
 	SubnetRef string `json:"subnetRef,omitempty"`
 	NADRef    string `json:"nadRef,omitempty"`
+	Role      string `json:"role,omitempty"`
+	IPAddress string `json:"ipAddress,omitempty"`
 	Primary   bool   `json:"primary"`
 }
 
@@ -77,7 +79,7 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 			}
 		}
 		if len(req.NetworkAttachments) == 0 {
-			req.NetworkAttachments = []networkAttachment{{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Primary: true}}
+			req.NetworkAttachments = []networkAttachment{{Name: "nic0", Network: req.Network, SubnetRef: req.SubnetRef, Role: "external", Primary: true}}
 		}
 		if req.SubnetRef == "" && len(req.NetworkAttachments) > 0 {
 			req.SubnetRef = req.NetworkAttachments[0].SubnetRef
@@ -114,7 +116,7 @@ func runList(client Client, out io.Writer) error {
 		return err
 	}
 	for _, vm := range vms {
-		if _, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nNetwork: %s\nSubnet: %s\nPrivate IP: %s\n\n", vm.Name, vm.Phase, vm.Image, valueOrUnknown(vm.Network), valueOrUnknown(vm.SubnetRef), vm.PrivateIP); err != nil {
+		if _, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\nImage: %s\nNetwork: %s\nSubnet: %s\nPrivate IP: %s\nAttachments: %s\n\n", vm.Name, vm.Phase, vm.Image, valueOrUnknown(vm.Network), valueOrUnknown(vm.SubnetRef), vm.PrivateIP, formatAttachments(vm.NetworkAttachments)); err != nil {
 			return err
 		}
 	}
@@ -185,7 +187,7 @@ func formatAttachments(items []networkAttachment) string {
 	}
 	parts := make([]string, 0, len(items))
 	for _, item := range items {
-		parts = append(parts, fmt.Sprintf("%s(%s/%s, primary=%t)", item.Name, valueOrUnknown(item.Network), valueOrUnknown(item.SubnetRef), item.Primary))
+		parts = append(parts, fmt.Sprintf("%s[%s](%s/%s, nad=%s, ip=%s, primary=%t)", item.Name, valueOrUnknown(item.Role), valueOrUnknown(item.Network), valueOrUnknown(item.SubnetRef), valueOrUnknown(item.NADRef), valueOrUnknown(item.IPAddress), item.Primary))
 	}
 	return strings.Join(parts, ", ")
 }

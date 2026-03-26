@@ -46,7 +46,7 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 func TestListVMsParsesVirtualMachines(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
 		"kubectl -n anarchy-system get virtualmachines -o json":         `{"items":[{"metadata":{"name":"vm1"},"spec":{"template":{"spec":{"domain":{"cpu":{"cores":2},"resources":{"requests":{"memory":"4Gi"}}},"networks":[{"name":"tenant-a"}]},"metadata":{"annotations":{"anarchy.io/image":"ubuntu-24.04","anarchy.io/subnet":"tenant-a"}}}},"status":{"printableStatus":"Running"}}]}`,
-		"kubectl -n anarchy-system get virtualmachineinstances -o json": `{"items":[{"metadata":{"name":"vm1"},"status":{"interfaces":[{"ipAddress":"10.0.0.10"}]}}]}`,
+		"kubectl -n anarchy-system get virtualmachineinstances -o json": `{"items":[{"metadata":{"name":"vm1"},"status":{"interfaces":[{"name":"tenant-a","ipAddress":"10.0.0.10"}]}}]}`,
 	}}
 	provider := kubevm.NewProvider(runner, "anarchy-system")
 
@@ -65,7 +65,7 @@ func TestListVMsParsesVirtualMachines(t *testing.T) {
 func TestGetVMReturnsDetail(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
 		"kubectl -n anarchy-system get virtualmachine vm1 -o json":         `{"metadata":{"name":"vm1"},"spec":{"template":{"spec":{"domain":{"cpu":{"cores":2},"resources":{"requests":{"memory":"4Gi"}}},"networks":[{"name":"default"}]},"metadata":{"annotations":{"anarchy.io/image":"ubuntu-24.04"}}}},"status":{"printableStatus":"Running"}}`,
-		"kubectl -n anarchy-system get virtualmachineinstance vm1 -o json": `{"status":{"interfaces":[{"ipAddress":"10.0.0.10"}]}}`,
+		"kubectl -n anarchy-system get virtualmachineinstance vm1 -o json": `{"status":{"interfaces":[{"name":"default","ipAddress":"10.0.0.10"}]}}`,
 	}}
 	provider := kubevm.NewProvider(runner, "anarchy-system")
 
@@ -122,7 +122,7 @@ func TestCreateVMAppliesManifest(t *testing.T) {
 		"masquerade: {}",
 		"- name: nic1",
 		"bridge: {}",
-		"- name: tenant-a",
+		"- name: nic0",
 		"pod: {}",
 		"- name: nic1",
 		"multus:",

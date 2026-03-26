@@ -5,6 +5,8 @@ type NetworkAttachment struct {
 	Network   string `json:"network"`
 	SubnetRef string `json:"subnetRef,omitempty"`
 	NADRef    string `json:"nadRef,omitempty"`
+	Role      string `json:"role,omitempty"`
+	IPAddress string `json:"ipAddress,omitempty"`
 	Primary   bool   `json:"primary"`
 }
 

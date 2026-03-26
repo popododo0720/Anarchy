@@ -22,6 +22,10 @@ func NewProvider(runner kexec.Runner, namespace string) Provider {
 	return Provider{runner: runner, namespace: namespace}
 }
 
+type vmNetwork struct {
+	Name string `json:"name"`
+}
+
 type vmListResponse struct {
 	Items []struct {
 		Metadata struct {
@@ -40,9 +44,7 @@ type vmListResponse struct {
 							} `json:"requests"`
 						} `json:"resources"`
 					} `json:"domain"`
-					Networks []struct {
-						Name string `json:"name"`
-					} `json:"networks"`
+					Networks []vmNetwork `json:"networks"`
 				} `json:"spec"`
 				Metadata struct {
 					Annotations map[string]string `json:"annotations"`
@@ -72,9 +74,7 @@ type vmSingleResponse struct {
 						} `json:"requests"`
 					} `json:"resources"`
 				} `json:"domain"`
-				Networks []struct {
-					Name string `json:"name"`
-				} `json:"networks"`
+				Networks []vmNetwork `json:"networks"`
 			} `json:"spec"`
 			Metadata struct {
 				Annotations map[string]string `json:"annotations"`
@@ -86,24 +86,25 @@ type vmSingleResponse struct {
 	} `json:"status"`
 }
 
+type vmiInterface struct {
+	Name      string `json:"name"`
+	IPAddress string `json:"ipAddress"`
+}
+
 type vmiListResponse struct {
 	Items []struct {
 		Metadata struct {
 			Name string `json:"name"`
 		} `json:"metadata"`
 		Status struct {
-			Interfaces []struct {
-				IPAddress string `json:"ipAddress"`
-			} `json:"interfaces"`
+			Interfaces []vmiInterface `json:"interfaces"`
 		} `json:"status"`
 	} `json:"items"`
 }
 
 type vmiSingleResponse struct {
 	Status struct {
-		Interfaces []struct {
-			IPAddress string `json:"ipAddress"`
-		} `json:"interfaces"`
+		Interfaces []vmiInterface `json:"interfaces"`
 	} `json:"status"`
 }
 
@@ -136,11 +137,9 @@ func (p Provider) ListVMs(ctx context.Context) ([]domainvm.VMSummary, error) {
 	if err := json.Unmarshal([]byte(vmiOut), &vmis); err != nil {
 		return nil, err
 	}
-	ipByName := map[string]string{}
+	ifacesByName := map[string][]vmiInterface{}
 	for _, item := range vmis.Items {
-		if len(item.Status.Interfaces) > 0 {
-			ipByName[item.Metadata.Name] = item.Status.Interfaces[0].IPAddress
-		}
+		ifacesByName[item.Metadata.Name] = item.Status.Interfaces
 	}
 	items := make([]domainvm.VMSummary, 0, len(vms.Items))
 	for _, item := range vms.Items {
@@ -152,14 +151,19 @@ func (p Provider) ListVMs(ctx context.Context) ([]domainvm.VMSummary, error) {
 		if subnet == "" {
 			subnet = network
 		}
+		attachments := attachmentDetails(item.Spec.Template.Spec.Networks, ifacesByName[item.Metadata.Name], item.Spec.Template.Metadata.Annotations)
+		primaryIP := ""
+		if len(attachments) > 0 {
+			primaryIP = attachments[0].IPAddress
+		}
 		items = append(items, domainvm.VMSummary{
 			Name:               item.Metadata.Name,
 			Phase:              item.Status.PrintableStatus,
 			Image:              item.Spec.Template.Metadata.Annotations["anarchy.io/image"],
 			Network:            network,
 			SubnetRef:          subnet,
-			PrivateIP:          ipByName[item.Metadata.Name],
-			NetworkAttachments: []domainvm.NetworkAttachment{{Name: network, Network: network, SubnetRef: subnet, Primary: true}},
+			PrivateIP:          primaryIP,
+			NetworkAttachments: attachments,
 		})
 	}
 	return items, nil
@@ -182,9 +186,10 @@ func (p Provider) GetVM(ctx context.Context, name string) (domainvm.VMDetail, er
 	if err := json.Unmarshal([]byte(vmiOut), &vmi); err != nil {
 		return domainvm.VMDetail{}, err
 	}
+	attachments := attachmentDetails(vm.Spec.Template.Spec.Networks, vmi.Status.Interfaces, vm.Spec.Template.Metadata.Annotations)
 	privateIP := ""
-	if len(vmi.Status.Interfaces) > 0 {
-		privateIP = vmi.Status.Interfaces[0].IPAddress
+	if len(attachments) > 0 {
+		privateIP = attachments[0].IPAddress
 	}
 	network := ""
 	if len(vm.Spec.Template.Spec.Networks) > 0 {
@@ -203,8 +208,55 @@ func (p Provider) GetVM(ctx context.Context, name string) (domainvm.VMDetail, er
 		Network:            network,
 		SubnetRef:          subnet,
 		PrivateIP:          privateIP,
-		NetworkAttachments: []domainvm.NetworkAttachment{{Name: network, Network: network, SubnetRef: subnet, Primary: true}},
+		NetworkAttachments: attachments,
 	}, nil
+}
+
+func attachmentDetails(networks []vmNetwork, ifaces []vmiInterface, annotations map[string]string) []domainvm.NetworkAttachment {
+	if len(networks) == 0 {
+		return nil
+	}
+	ipByName := map[string]string{}
+	for _, iface := range ifaces {
+		ipByName[iface.Name] = iface.IPAddress
+	}
+	items := make([]domainvm.NetworkAttachment, 0, len(networks))
+	for i, net := range networks {
+		subnet := net.Name
+		if i == 0 {
+			if ann := annotations["anarchy.io/subnet"]; ann != "" {
+				subnet = ann
+			}
+		}
+		name := net.Name
+		role := annotations["anarchy.io/attachment."+name+".role"]
+		if role == "" {
+			if i == 0 {
+				role = "external"
+			} else {
+				role = "internal"
+			}
+		}
+		nadRef := annotations["anarchy.io/attachment."+name+".nad"]
+		network := annotations["anarchy.io/attachment."+name+".network"]
+		if network == "" {
+			network = net.Name
+		}
+		itemSubnet := annotations["anarchy.io/attachment."+name+".subnet"]
+		if itemSubnet == "" {
+			itemSubnet = subnet
+		}
+		items = append(items, domainvm.NetworkAttachment{
+			Name:      name,
+			Network:   network,
+			SubnetRef: itemSubnet,
+			NADRef:    nadRef,
+			Role:      role,
+			IPAddress: ipByName[net.Name],
+			Primary:   i == 0,
+		})
+	}
+	return items
 }
 
 func (p Provider) StartVM(ctx context.Context, name string) error {
@@ -250,6 +302,7 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 	}
 	interfacesYAML := ""
 	networksYAML := ""
+	attachmentAnnotations := ""
 	for i, attachment := range attachments {
 		name := attachment.Name
 		if name == "" {
@@ -259,17 +312,31 @@ func (p Provider) writeManifest(req domainvm.CreateVMRequest) (string, error) {
 		if networkName == "" {
 			networkName = attachment.Network
 		}
-		if attachment.Primary {
-			interfacesYAML += fmt.Sprintf("            - name: %s\n              masquerade: {}\n", name)
-			networksYAML += fmt.Sprintf("        - name: %s\n          pod: {}\n", networkName)
-			continue
+		role := attachment.Role
+		if role == "" {
+			if attachment.Primary {
+				role = "external"
+			} else {
+				role = "internal"
+			}
 		}
 		nadRef := attachment.NADRef
-		if nadRef == "" {
-			nadRef = networkName
+		if attachment.Primary {
+			interfacesYAML += fmt.Sprintf("            - name: %s\n              masquerade: {}\n", name)
+			networksYAML += fmt.Sprintf("        - name: %s\n          pod: {}\n", name)
+		} else {
+			if nadRef == "" {
+				nadRef = networkName
+			}
+			interfacesYAML += fmt.Sprintf("            - name: %s\n              bridge: {}\n", name)
+			networksYAML += fmt.Sprintf("        - name: %s\n          multus:\n            networkName: %s\n", name, nadRef)
 		}
-		interfacesYAML += fmt.Sprintf("            - name: %s\n              bridge: {}\n", name)
-		networksYAML += fmt.Sprintf("        - name: %s\n          multus:\n            networkName: %s\n", name, nadRef)
+		attachmentAnnotations += fmt.Sprintf("        anarchy.io/attachment.%s.network: %s\n", name, attachment.Network)
+		attachmentAnnotations += fmt.Sprintf("        anarchy.io/attachment.%s.subnet: %s\n", name, networkName)
+		attachmentAnnotations += fmt.Sprintf("        anarchy.io/attachment.%s.role: %s\n", name, role)
+		if nadRef != "" {
+			attachmentAnnotations += fmt.Sprintf("        anarchy.io/attachment.%s.nad: %s\n", name, nadRef)
+		}
 	}
 	manifest := fmt.Sprintf(`apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -299,7 +366,7 @@ spec:
       annotations:
         anarchy.io/image: %s
         anarchy.io/subnet: %s
-    spec:
+%s    spec:
       domain:
         cpu:
           cores: %d
@@ -317,7 +384,7 @@ spec:
         - name: rootdisk
           dataVolume:
             name: %s
-`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, primarySubnet, req.CPU, req.Memory, interfacesYAML, networksYAML, rootDiskName)
+`, req.Name, p.namespace, rootDiskName, req.Image, p.namespace, req.Image, primarySubnet, attachmentAnnotations, req.CPU, req.Memory, interfacesYAML, networksYAML, rootDiskName)
 	if _, err := file.WriteString(manifest); err != nil {
 		file.Close()
 		return "", err
