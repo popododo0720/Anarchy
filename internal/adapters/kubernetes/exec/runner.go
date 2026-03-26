@@ -2,6 +2,7 @@ package exec
 
 import (
 	"context"
+	"os"
 	"os/exec"
 )
 
@@ -15,6 +16,7 @@ func NewCommandRunner() CommandRunner { return CommandRunner{} }
 
 func (CommandRunner) Run(ctx context.Context, name string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = append(os.Environ(), "KUBECTL_KUBERC=false")
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
