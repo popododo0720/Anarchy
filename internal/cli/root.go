@@ -10,6 +10,7 @@ import (
 	clinad "github.com/popododo0720/anarchy/internal/cli/nad"
 	clinetwork "github.com/popododo0720/anarchy/internal/cli/network"
 	clinode "github.com/popododo0720/anarchy/internal/cli/node"
+	clipublicip "github.com/popododo0720/anarchy/internal/cli/publicip"
 	clisubnet "github.com/popododo0720/anarchy/internal/cli/subnet"
 	clisystem "github.com/popododo0720/anarchy/internal/cli/system"
 	clivm "github.com/popododo0720/anarchy/internal/cli/vm"
@@ -29,6 +30,8 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 		return clinetwork.Run(args[1:], apiBaseURL, httpClient, out)
 	case "nad":
 		return clinad.Run(args[1:], apiBaseURL, httpClient, out)
+	case "publicip":
+		return clipublicip.Run(args[1:], apiBaseURL, httpClient, out)
 	case "subnet":
 		return clisubnet.Run(args[1:], apiBaseURL, httpClient, out)
 	case "image":
