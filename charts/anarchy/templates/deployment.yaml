@@ -13,6 +13,10 @@ spec:
         app: anarchy-api
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: anarchy-api
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"

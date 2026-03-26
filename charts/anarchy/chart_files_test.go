@@ -16,8 +16,8 @@ func readChartFile(t *testing.T, name string) string {
 	return string(content)
 }
 
-func TestChartIncludesServiceAccountAndRBACTemplates(t *testing.T) {
-	for _, name := range []string{"templates/serviceaccount.yaml", "templates/role.yaml", "templates/rolebinding.yaml"} {
+func TestChartIncludesServiceAccountAndClusterRBACTemplates(t *testing.T) {
+	for _, name := range []string{"templates/serviceaccount.yaml", "templates/clusterrole.yaml", "templates/clusterrolebinding.yaml"} {
 		if _, err := os.Stat(filepath.Join(".", name)); err != nil {
 			t.Fatalf("expected %s to exist: %v", name, err)
 		}
@@ -27,12 +27,12 @@ func TestChartIncludesServiceAccountAndRBACTemplates(t *testing.T) {
 func TestChartValuesAndDeploymentSupportNamespaceConfig(t *testing.T) {
 	values := readChartFile(t, "values.yaml")
 	deployment := readChartFile(t, "templates/deployment.yaml")
-	for _, want := range []string{"serviceAccount:", "config:", "namespace:"} {
+	for _, want := range []string{"serviceAccount:", "config:", "namespace:", "nodeSelector:"} {
 		if !strings.Contains(values, want) {
 			t.Fatalf("values.yaml missing %q\n%s", want, values)
 		}
 	}
-	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace"} {
+	for _, want := range []string{"serviceAccountName:", "ANARCHY_NAMESPACE", ".Values.config.namespace", "with .Values.nodeSelector"} {
 		if !strings.Contains(deployment, want) {
 			t.Fatalf("deployment.yaml missing %q\n%s", want, deployment)
 		}
