@@ -40,3 +40,12 @@ func TestLabHelmReleaseUsesValuesFromConfigMap(t *testing.T) {
 		}
 	}
 }
+
+func TestLabGitRepositoryUsesHTTPSForControllerAccess(t *testing.T) {
+	gitRepository := readFile(t, "gitrepository.yaml")
+	for _, want := range []string{"kind: GitRepository", "url: https://github.com/popododo0720/Anarchy.git", "branch: dev"} {
+		if !strings.Contains(gitRepository, want) {
+			t.Fatalf("gitrepository.yaml missing %q\n%s", want, gitRepository)
+		}
+	}
+}
