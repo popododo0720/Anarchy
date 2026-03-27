@@ -34,6 +34,8 @@ type PublicIPSummary struct {
 	Name             string `json:"name"`
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
+	Realized         bool   `json:"realized"`
+	Status           string `json:"status"`
 	AttachmentTarget string `json:"attachmentTarget"`
 	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 }
@@ -42,6 +44,8 @@ type PublicIPDetail struct {
 	Name             string `json:"name"`
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
+	Realized         bool   `json:"realized"`
+	Status           string `json:"status"`
 	AttachmentTarget string `json:"attachmentTarget"`
 	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 	Type             string `json:"type"`

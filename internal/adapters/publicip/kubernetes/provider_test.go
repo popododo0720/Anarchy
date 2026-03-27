@@ -56,7 +56,7 @@ func TestListPublicIPsParsesKubeOVNOvnEIPs(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ListPublicIPs() len = %d, want 1", len(got))
 	}
-	if got[0] != (domainpublicip.PublicIPSummary{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15"}) {
+	if got[0] != (domainpublicip.PublicIPSummary{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: true, Status: "realized", AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15"}) {
 		t.Fatalf("ListPublicIPs() = %#v", got)
 	}
 }
@@ -79,7 +79,7 @@ func TestListPublicIPsFallsBackWhenOvnFipCRDIsUnavailable(t *testing.T) {
 	if len(got) != 1 {
 		t.Fatalf("ListPublicIPs() len = %d, want 1", len(got))
 	}
-	if got[0] != (domainpublicip.PublicIPSummary{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0"}) {
+	if got[0] != (domainpublicip.PublicIPSummary{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: false, Status: "pending", AttachmentTarget: "vm1:nic0"}) {
 		t.Fatalf("ListPublicIPs() = %#v", got)
 	}
 }
@@ -95,7 +95,7 @@ func TestGetPublicIPReturnsStructuredDetail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublicIP() error = %v", err)
 	}
-	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "", TargetIPAddress: "10.0.0.25", Type: "floating"}) {
+	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: true, Status: "realized", AttachmentTarget: "", TargetIPAddress: "10.0.0.25", Type: "floating"}) {
 		t.Fatalf("GetPublicIP() = %#v", got)
 	}
 }
@@ -115,7 +115,7 @@ func TestGetPublicIPFallsBackWhenOvnFipCRDIsUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetPublicIP() error = %v", err)
 	}
-	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}) {
+	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: false, Status: "pending", AttachmentTarget: "vm1:nic0", Type: "floating"}) {
 		t.Fatalf("GetPublicIP() = %#v", got)
 	}
 }

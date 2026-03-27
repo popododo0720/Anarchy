@@ -16,11 +16,11 @@ import (
 type fakeProvider struct{}
 
 func (fakeProvider) ListPublicIPs(context.Context) ([]domainpublicip.PublicIPSummary, error) {
-	return []domainpublicip.PublicIPSummary{{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15"}}, nil
+	return []domainpublicip.PublicIPSummary{{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: true, Status: "realized", AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15"}}, nil
 }
 
 func (fakeProvider) GetPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
-	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15", Type: "floating"}, nil
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, Realized: true, Status: "realized", AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15", Type: "floating"}, nil
 }
 
 func (fakeProvider) AttachPublicIP(_ context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
@@ -50,6 +50,9 @@ func TestListPublicIPsHandlerReturnsStructuredSummary(t *testing.T) {
 	if body[0]["targetIpAddress"] != "10.0.0.15" {
 		t.Fatalf("body = %#v", body)
 	}
+	if body[0]["status"] != "realized" || body[0]["realized"] != true {
+		t.Fatalf("body = %#v", body)
+	}
 }
 
 func TestGetPublicIPHandlerReturnsStructuredDetail(t *testing.T) {
@@ -70,6 +73,9 @@ func TestGetPublicIPHandlerReturnsStructuredDetail(t *testing.T) {
 		t.Fatalf("body = %#v", body)
 	}
 	if body["targetIpAddress"] != "10.0.0.15" {
+		t.Fatalf("body = %#v", body)
+	}
+	if body["status"] != "realized" || body["realized"] != true {
 		t.Fatalf("body = %#v", body)
 	}
 }

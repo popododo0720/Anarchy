@@ -133,10 +133,13 @@ func (p Provider) DetachPublicIP(ctx context.Context, name string) (domainpublic
 
 func toSummary(item ovnEIPItem, targetIP string) domainpublicip.PublicIPSummary {
 	target := item.Metadata.Annotations[attachmentTargetAnnotation]
+	realized := targetIP != ""
 	return domainpublicip.PublicIPSummary{
 		Name:             item.Metadata.Name,
 		Address:          publicIPAddress(item),
-		Attached:         target != "" || targetIP != "",
+		Attached:         target != "" || realized,
+		Realized:         realized,
+		Status:           publicIPStatus(target != "", realized),
 		AttachmentTarget: target,
 		TargetIPAddress:  targetIP,
 	}
@@ -144,13 +147,27 @@ func toSummary(item ovnEIPItem, targetIP string) domainpublicip.PublicIPSummary 
 
 func toDetail(item ovnEIPItem, targetIP string, hasFIP bool) domainpublicip.PublicIPDetail {
 	target := item.Metadata.Annotations[attachmentTargetAnnotation]
+	realized := hasFIP
 	return domainpublicip.PublicIPDetail{
 		Name:             item.Metadata.Name,
 		Address:          publicIPAddress(item),
-		Attached:         target != "" || hasFIP,
+		Attached:         target != "" || realized,
+		Realized:         realized,
+		Status:           publicIPStatus(target != "", realized),
 		AttachmentTarget: target,
 		TargetIPAddress:  targetIP,
 		Type:             "floating",
+	}
+}
+
+func publicIPStatus(requested, realized bool) string {
+	switch {
+	case realized:
+		return "realized"
+	case requested:
+		return "pending"
+	default:
+		return "detached"
 	}
 }
 

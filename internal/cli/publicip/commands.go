@@ -20,6 +20,8 @@ type publicIPSummary struct {
 	Name             string `json:"name"`
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
+	Realized         bool   `json:"realized"`
+	Status           string `json:"status"`
 	AttachmentTarget string `json:"attachmentTarget"`
 	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 }
@@ -28,6 +30,8 @@ type publicIPDetail struct {
 	Name             string `json:"name"`
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
+	Realized         bool   `json:"realized"`
+	Status           string `json:"status"`
 	AttachmentTarget string `json:"attachmentTarget"`
 	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 	Type             string `json:"type"`
@@ -72,7 +76,7 @@ func runList(client Client, out io.Writer) error {
 		return err
 	}
 	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nAttached: %t\nTarget: %s\nTarget IP: %s\n\n", item.Name, item.Address, item.Attached, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress)); err != nil {
+		if _, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nAttached: %t\nStatus: %s\nRealized: %t\nTarget: %s\nTarget IP: %s\n\n", item.Name, item.Address, item.Attached, valueOrUnknown(item.Status), item.Realized, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress)); err != nil {
 			return err
 		}
 	}
@@ -84,7 +88,7 @@ func runShow(client Client, name string, out io.Writer) error {
 	if err := client.getJSON("/api/v1/public-ips/"+name, &item); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nType: %s\nAttached: %t\nTarget: %s\nTarget IP: %s\n", item.Name, item.Address, item.Type, item.Attached, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress))
+	_, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nType: %s\nAttached: %t\nStatus: %s\nRealized: %t\nTarget: %s\nTarget IP: %s\n", item.Name, item.Address, item.Type, item.Attached, valueOrUnknown(item.Status), item.Realized, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress))
 	return err
 }
 

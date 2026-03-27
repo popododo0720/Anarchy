@@ -14,7 +14,7 @@ func TestRunListPrintsPublicIPSummary(t *testing.T) {
 		if r.URL.Path != "/api/v1/public-ips" {
 			t.Fatalf("path = %s, want /api/v1/public-ips", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`[{"name":"fip-01","address":"203.0.113.10","attached":true,"attachmentTarget":"vm1:nic0","targetIpAddress":"10.0.0.15"}]`))
+		_, _ = w.Write([]byte(`[{"name":"fip-01","address":"203.0.113.10","attached":true,"realized":true,"status":"realized","attachmentTarget":"vm1:nic0","targetIpAddress":"10.0.0.15"}]`))
 	}))
 	defer server.Close()
 
@@ -22,7 +22,7 @@ func TestRunListPrintsPublicIPSummary(t *testing.T) {
 	if err := clipublicip.Run([]string{"list"}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Name: fip-01", "Address: 203.0.113.10", "Target: vm1:nic0", "Target IP: 10.0.0.15"} {
+	for _, want := range []string{"Name: fip-01", "Address: 203.0.113.10", "Status: realized", "Realized: true", "Target: vm1:nic0", "Target IP: 10.0.0.15"} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {
 			t.Fatalf("output = %q, want %q", out.String(), want)
 		}
@@ -34,7 +34,7 @@ func TestRunShowPrintsPublicIPDetail(t *testing.T) {
 		if r.URL.Path != "/api/v1/public-ips/fip-01" {
 			t.Fatalf("path = %s, want /api/v1/public-ips/fip-01", r.URL.Path)
 		}
-		_, _ = w.Write([]byte(`{"name":"fip-01","address":"203.0.113.10","attached":true,"attachmentTarget":"vm1:nic0","targetIpAddress":"10.0.0.15","type":"floating"}`))
+		_, _ = w.Write([]byte(`{"name":"fip-01","address":"203.0.113.10","attached":true,"realized":true,"status":"realized","attachmentTarget":"vm1:nic0","targetIpAddress":"10.0.0.15","type":"floating"}`))
 	}))
 	defer server.Close()
 
@@ -42,7 +42,7 @@ func TestRunShowPrintsPublicIPDetail(t *testing.T) {
 	if err := clipublicip.Run([]string{"show", "fip-01"}, server.URL, server.Client(), &out); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	for _, want := range []string{"Name: fip-01", "Type: floating", "Target: vm1:nic0", "Target IP: 10.0.0.15"} {
+	for _, want := range []string{"Name: fip-01", "Type: floating", "Status: realized", "Realized: true", "Target: vm1:nic0", "Target IP: 10.0.0.15"} {
 		if !bytes.Contains(out.Bytes(), []byte(want)) {
 			t.Fatalf("output = %q, want %q", out.String(), want)
 		}
