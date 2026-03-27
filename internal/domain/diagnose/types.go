@@ -18,3 +18,10 @@ type VMReport struct {
 	Findings []string `json:"findings"`
 	Checks   []Check  `json:"checks,omitempty"`
 }
+
+type PublicIPReport struct {
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Findings []string `json:"findings"`
+	Checks   []Check  `json:"checks,omitempty"`
+}

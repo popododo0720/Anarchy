@@ -22,6 +22,10 @@ func (fakeProvider) DiagnoseVM(context.Context, string) (domaindiag.VMReport, er
 	return domaindiag.VMReport{Name: "testvm", Phase: "Provisioning", Findings: []string{"datavolume phase: WaitForFirstConsumer"}}, nil
 }
 
+func (fakeProvider) DiagnosePublicIP(context.Context, string) (domaindiag.PublicIPReport, error) {
+	return domaindiag.PublicIPReport{Name: "fip-01", Status: "pending", Findings: []string{"floating ip rule not realized yet"}}, nil
+}
+
 func TestDiagnoseClusterHandlerReturnsStructuredReport(t *testing.T) {
 	handler := httpdiag.NewHandler(appdiag.NewService(fakeProvider{}))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/diagnose/cluster", nil)
@@ -55,6 +59,25 @@ func TestDiagnoseVMHandlerReturnsStructuredReport(t *testing.T) {
 		t.Fatalf("unmarshal response: %v", err)
 	}
 	if body["name"] != "testvm" {
+		t.Fatalf("body = %#v", body)
+	}
+}
+
+func TestDiagnosePublicIPHandlerReturnsStructuredReport(t *testing.T) {
+	handler := httpdiag.NewHandler(appdiag.NewService(fakeProvider{}))
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/diagnose/public-ips/fip-01", nil)
+	req.SetPathValue("name", "fip-01")
+	res := httptest.NewRecorder()
+
+	handler.DiagnosePublicIP(res, req)
+	if res.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusOK)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if body["name"] != "fip-01" || body["status"] != "pending" {
 		t.Fatalf("body = %#v", body)
 	}
 }

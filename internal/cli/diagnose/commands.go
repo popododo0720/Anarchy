@@ -24,6 +24,12 @@ type vmReport struct {
 	Findings []string `json:"findings"`
 }
 
+type publicIPReport struct {
+	Name     string   `json:"name"`
+	Status   string   `json:"status"`
+	Findings []string `json:"findings"`
+}
+
 func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("missing diagnose subcommand")
@@ -37,6 +43,11 @@ func Run(args []string, apiBaseURL string, httpClient *http.Client, out io.Write
 			return fmt.Errorf("missing vm name")
 		}
 		return runVM(client, args[1], out)
+	case "publicip":
+		if len(args) < 2 {
+			return fmt.Errorf("missing public ip name")
+		}
+		return runPublicIP(client, args[1], out)
 	default:
 		return fmt.Errorf("unknown diagnose subcommand: %s", args[0])
 	}
@@ -64,6 +75,22 @@ func runVM(client Client, name string, out io.Writer) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(out, "Name: %s\nPhase: %s\n", resp.Name, resp.Phase); err != nil {
+		return err
+	}
+	for _, finding := range resp.Findings {
+		if _, err := fmt.Fprintf(out, "- %s\n", finding); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runPublicIP(client Client, name string, out io.Writer) error {
+	var resp publicIPReport
+	if err := client.getJSON("/api/v1/diagnose/public-ips/"+name, &resp); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(out, "Name: %s\nStatus: %s\n", resp.Name, resp.Status); err != nil {
 		return err
 	}
 	for _, finding := range resp.Findings {

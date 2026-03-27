@@ -22,3 +22,7 @@ func (s *Service) DiagnoseCluster(ctx context.Context) (domaindiag.ClusterReport
 func (s *Service) DiagnoseVM(ctx context.Context, name string) (domaindiag.VMReport, error) {
 	return s.provider.DiagnoseVM(ctx, name)
 }
+
+func (s *Service) DiagnosePublicIP(ctx context.Context, name string) (domaindiag.PublicIPReport, error) {
+	return s.provider.DiagnosePublicIP(ctx, name)
+}

@@ -14,6 +14,7 @@ func NewHandler(service *appdiag.Service) *Handler { return &Handler{service: se
 
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/v1/diagnose/cluster", h.DiagnoseCluster)
+	mux.HandleFunc("/api/v1/diagnose/public-ips/{name}", h.DiagnosePublicIP)
 	mux.HandleFunc("/api/v1/diagnose/vms/{name}", h.DiagnoseVM)
 }
 
@@ -31,6 +32,16 @@ func (h *Handler) DiagnoseVM(w http.ResponseWriter, r *http.Request) {
 	report, err := h.service.DiagnoseVM(r.Context(), name)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "diagnose_vm_failed", err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (h *Handler) DiagnosePublicIP(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PathValue("name"))
+	report, err := h.service.DiagnosePublicIP(r.Context(), name)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "diagnose_public_ip_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, report)

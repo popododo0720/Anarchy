@@ -9,4 +9,5 @@ import (
 type Provider interface {
 	DiagnoseCluster(ctx context.Context) (domaindiag.ClusterReport, error)
 	DiagnoseVM(ctx context.Context, name string) (domaindiag.VMReport, error)
+	DiagnosePublicIP(ctx context.Context, name string) (domaindiag.PublicIPReport, error)
 }

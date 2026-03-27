@@ -80,6 +80,25 @@ type dataVolumeResponse struct {
 	} `json:"status"`
 }
 
+type ovnEIPResponse struct {
+	Metadata struct {
+		Name        string            `json:"name"`
+		Annotations map[string]string `json:"annotations"`
+	} `json:"metadata"`
+	Status struct {
+		V4IP string `json:"v4Ip"`
+	} `json:"status"`
+	Spec struct {
+		V4IP string `json:"v4Ip"`
+	} `json:"spec"`
+}
+
+type ovnFIPResponse struct {
+	Spec struct {
+		IPName string `json:"ipName"`
+	} `json:"spec"`
+}
+
 func (p Provider) DiagnoseCluster(ctx context.Context) (domaindiag.ClusterReport, error) {
 	findings := []string{}
 	checks := []domaindiag.Check{}
@@ -189,4 +208,55 @@ func (p Provider) DiagnoseVM(ctx context.Context, name string) (domaindiag.VMRep
 		findings = append(findings, "no issues detected")
 	}
 	return domaindiag.VMReport{Name: vm.Metadata.Name, Phase: vm.Status.PrintableStatus, Findings: findings, Checks: checks}, nil
+}
+
+func (p Provider) DiagnosePublicIP(ctx context.Context, name string) (domaindiag.PublicIPReport, error) {
+	out, err := p.runner.Run(ctx, "kubectl", "get", "ovneip.kubeovn.io", name, "-o", "json")
+	if err != nil {
+		return domaindiag.PublicIPReport{}, err
+	}
+	var eip ovnEIPResponse
+	if err := json.Unmarshal([]byte(out), &eip); err != nil {
+		return domaindiag.PublicIPReport{}, err
+	}
+	findings := []string{}
+	checks := []domaindiag.Check{}
+	status := "detached"
+	address := eip.Status.V4IP
+	if address == "" {
+		address = eip.Spec.V4IP
+	}
+	if address != "" {
+		findings = append(findings, "public ip address: "+address)
+	}
+	target := eip.Metadata.Annotations["anarchy.io/attachment-target"]
+	if target != "" {
+		status = "pending"
+		findings = append(findings, "attachment target: "+target)
+	}
+	checks = append(checks, domaindiag.Check{Name: "ovneip", Status: status, Message: "public ip inventory present"})
+
+	fipOut, err := p.runner.Run(ctx, "kubectl", "get", "ovnfip.kubeovn.io", name, "-o", "json")
+	if err == nil {
+		var fip ovnFIPResponse
+		if json.Unmarshal([]byte(fipOut), &fip) == nil {
+			status = "realized"
+			checks = append(checks, domaindiag.Check{Name: "ovnfip", Status: "realized", Message: "floating ip rule realized"})
+			if fip.Spec.IPName != "" {
+				findings = append(findings, "target ip: "+fip.Spec.IPName)
+			}
+		}
+	} else {
+		checks = append(checks, domaindiag.Check{Name: "ovnfip", Status: status, Message: "floating ip rule not realized yet"})
+		if target != "" {
+			findings = append(findings, "floating ip rule not realized yet")
+		} else {
+			findings = append(findings, "public ip is detached")
+		}
+	}
+
+	if len(findings) == 0 {
+		findings = append(findings, "no issues detected")
+	}
+	return domaindiag.PublicIPReport{Name: eip.Metadata.Name, Status: status, Findings: findings, Checks: checks}, nil
 }

@@ -70,3 +70,26 @@ func TestDiagnoseVMReportsProvisioningBlockers(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnosePublicIPReportsPendingRealization(t *testing.T) {
+	runner := &fakeRunner{responses: map[string]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+	}, errors: map[string]error{
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": errors.New("NotFound"),
+	}}
+	provider := kubediag.NewProvider(runner, "anarchy-system")
+
+	report, err := provider.DiagnosePublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("DiagnosePublicIP() error = %v", err)
+	}
+	if report.Name != "fip-01" || report.Status != "pending" {
+		t.Fatalf("report = %#v", report)
+	}
+	joined := strings.Join(report.Findings, " | ")
+	for _, want := range []string{"public ip address: 203.0.113.10", "attachment target: vm1:nic1", "floating ip rule not realized yet"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("findings = %#v, want to contain %q", report.Findings, want)
+		}
+	}
+}
