@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	kexec "github.com/popododo0720/anarchy/internal/adapters/kubernetes/exec"
 	domainpublicip "github.com/popododo0720/anarchy/internal/domain/publicip"
@@ -28,6 +29,10 @@ type ovnEIPListResponse struct {
 	Items []ovnEIPItem `json:"items"`
 }
 
+type ovnFIPListResponse struct {
+	Items []ovnFIPItem `json:"items"`
+}
+
 type ovnEIPItem struct {
 	Metadata struct {
 		Name        string            `json:"name"`
@@ -41,6 +46,16 @@ type ovnEIPItem struct {
 	} `json:"status"`
 }
 
+type ovnFIPItem struct {
+	Metadata struct {
+		Name string `json:"name"`
+	} `json:"metadata"`
+	Spec struct {
+		OvnEIP string `json:"ovnEip"`
+		IPName string `json:"ipName"`
+	} `json:"spec"`
+}
+
 func (p Provider) ListPublicIPs(ctx context.Context) ([]domainpublicip.PublicIPSummary, error) {
 	out, err := p.runner.Run(ctx, "kubectl", "get", "ovneips.kubeovn.io", "-o", "json")
 	if err != nil {
@@ -50,9 +65,13 @@ func (p Provider) ListPublicIPs(ctx context.Context) ([]domainpublicip.PublicIPS
 	if err := json.Unmarshal([]byte(out), &payload); err != nil {
 		return nil, err
 	}
+	fipTargets, err := p.listFIPTargets(ctx)
+	if err != nil {
+		return nil, err
+	}
 	items := make([]domainpublicip.PublicIPSummary, 0, len(payload.Items))
 	for _, item := range payload.Items {
-		items = append(items, toSummary(item))
+		items = append(items, toSummary(item, fipTargets[item.Metadata.Name]))
 	}
 	return items, nil
 }
@@ -66,7 +85,11 @@ func (p Provider) GetPublicIP(ctx context.Context, name string) (domainpublicip.
 	if err := json.Unmarshal([]byte(out), &item); err != nil {
 		return domainpublicip.PublicIPDetail{}, err
 	}
-	return toDetail(item), nil
+	targetIP, hasFIP, err := p.getFIPTarget(ctx, name)
+	if err != nil {
+		return domainpublicip.PublicIPDetail{}, err
+	}
+	return toDetail(item, targetIP, hasFIP), nil
 }
 
 func (p Provider) AttachPublicIP(ctx context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
@@ -108,23 +131,25 @@ func (p Provider) DetachPublicIP(ctx context.Context, name string) (domainpublic
 	return p.GetPublicIP(ctx, name)
 }
 
-func toSummary(item ovnEIPItem) domainpublicip.PublicIPSummary {
+func toSummary(item ovnEIPItem, targetIP string) domainpublicip.PublicIPSummary {
 	target := item.Metadata.Annotations[attachmentTargetAnnotation]
 	return domainpublicip.PublicIPSummary{
 		Name:             item.Metadata.Name,
 		Address:          publicIPAddress(item),
-		Attached:         target != "",
+		Attached:         target != "" || targetIP != "",
 		AttachmentTarget: target,
+		TargetIPAddress:  targetIP,
 	}
 }
 
-func toDetail(item ovnEIPItem) domainpublicip.PublicIPDetail {
+func toDetail(item ovnEIPItem, targetIP string, hasFIP bool) domainpublicip.PublicIPDetail {
 	target := item.Metadata.Annotations[attachmentTargetAnnotation]
 	return domainpublicip.PublicIPDetail{
 		Name:             item.Metadata.Name,
 		Address:          publicIPAddress(item),
-		Attached:         target != "",
+		Attached:         target != "" || hasFIP,
 		AttachmentTarget: target,
+		TargetIPAddress:  targetIP,
 		Type:             "floating",
 	}
 }
@@ -134,6 +159,46 @@ func publicIPAddress(item ovnEIPItem) string {
 		return item.Status.V4IP
 	}
 	return item.Spec.V4IP
+}
+
+func (p Provider) listFIPTargets(ctx context.Context) (map[string]string, error) {
+	out, err := p.runner.Run(ctx, "kubectl", "get", "ovnfips.kubeovn.io", "-o", "json")
+	if err != nil {
+		return nil, err
+	}
+	var payload ovnFIPListResponse
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		return nil, err
+	}
+	targets := make(map[string]string, len(payload.Items))
+	for _, item := range payload.Items {
+		key := item.Spec.OvnEIP
+		if key == "" {
+			key = item.Metadata.Name
+		}
+		targets[key] = item.Spec.IPName
+	}
+	return targets, nil
+}
+
+func (p Provider) getFIPTarget(ctx context.Context, name string) (string, bool, error) {
+	out, err := p.runner.Run(ctx, "kubectl", "get", "ovnfip.kubeovn.io", name, "-o", "json")
+	if err != nil {
+		if isNotFound(err) {
+			return "", false, nil
+		}
+		return "", false, err
+	}
+	var item ovnFIPItem
+	if err := json.Unmarshal([]byte(out), &item); err != nil {
+		return "", false, err
+	}
+	return item.Spec.IPName, true, nil
+}
+
+func isNotFound(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "notfound") || strings.Contains(message, "not found")
 }
 
 func (p Provider) writeFIPManifest(req domainpublicip.AttachPublicIPRequest) (string, error) {

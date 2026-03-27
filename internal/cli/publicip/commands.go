@@ -21,6 +21,7 @@ type publicIPSummary struct {
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
 	AttachmentTarget string `json:"attachmentTarget"`
+	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 }
 
 type publicIPDetail struct {
@@ -28,6 +29,7 @@ type publicIPDetail struct {
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
 	AttachmentTarget string `json:"attachmentTarget"`
+	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 	Type             string `json:"type"`
 }
 
@@ -70,7 +72,7 @@ func runList(client Client, out io.Writer) error {
 		return err
 	}
 	for _, item := range items {
-		if _, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nAttached: %t\nTarget: %s\n\n", item.Name, item.Address, item.Attached, item.AttachmentTarget); err != nil {
+		if _, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nAttached: %t\nTarget: %s\nTarget IP: %s\n\n", item.Name, item.Address, item.Attached, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress)); err != nil {
 			return err
 		}
 	}
@@ -82,7 +84,7 @@ func runShow(client Client, name string, out io.Writer) error {
 	if err := client.getJSON("/api/v1/public-ips/"+name, &item); err != nil {
 		return err
 	}
-	_, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nType: %s\nAttached: %t\nTarget: %s\n", item.Name, item.Address, item.Type, item.Attached, item.AttachmentTarget)
+	_, err := fmt.Fprintf(out, "Name: %s\nAddress: %s\nType: %s\nAttached: %t\nTarget: %s\nTarget IP: %s\n", item.Name, item.Address, item.Type, item.Attached, item.AttachmentTarget, valueOrUnknown(item.TargetIPAddress))
 	return err
 }
 
@@ -130,4 +132,11 @@ func (c Client) postJSON(path string, body any, target any) error {
 		return fmt.Errorf("api error: %s", resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func valueOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }

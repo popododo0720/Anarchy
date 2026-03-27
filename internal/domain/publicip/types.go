@@ -35,6 +35,7 @@ type PublicIPSummary struct {
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
 	AttachmentTarget string `json:"attachmentTarget"`
+	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 }
 
 type PublicIPDetail struct {
@@ -42,5 +43,6 @@ type PublicIPDetail struct {
 	Address          string `json:"address"`
 	Attached         bool   `json:"attached"`
 	AttachmentTarget string `json:"attachmentTarget"`
+	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 	Type             string `json:"type"`
 }

@@ -11,11 +11,11 @@ import (
 type fakeProvider struct{}
 
 func (fakeProvider) ListPublicIPs(context.Context) ([]domainpublicip.PublicIPSummary, error) {
-	return []domainpublicip.PublicIPSummary{{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0"}}, nil
+	return []domainpublicip.PublicIPSummary{{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15"}}, nil
 }
 
 func (fakeProvider) GetPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
-	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}, nil
+	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", TargetIPAddress: "10.0.0.15", Type: "floating"}, nil
 }
 
 func (fakeProvider) AttachPublicIP(context.Context, domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
@@ -35,11 +35,17 @@ func TestServiceDelegatesToProvider(t *testing.T) {
 	if len(items) != 1 || items[0].Name != "fip-01" {
 		t.Fatalf("ListPublicIPs() = %#v", items)
 	}
+	if items[0].TargetIPAddress != "10.0.0.15" {
+		t.Fatalf("ListPublicIPs() = %#v", items)
+	}
 	detail, err := svc.GetPublicIP(context.Background(), "fip-01")
 	if err != nil {
 		t.Fatalf("GetPublicIP() error = %v", err)
 	}
 	if detail.Type != "floating" {
+		t.Fatalf("GetPublicIP() = %#v", detail)
+	}
+	if detail.TargetIPAddress != "10.0.0.15" {
 		t.Fatalf("GetPublicIP() = %#v", detail)
 	}
 	attached, err := svc.AttachPublicIP(context.Background(), domainpublicip.AttachPublicIPRequest{Name: "fip-01", AttachmentTarget: "vm1:nic1"})
