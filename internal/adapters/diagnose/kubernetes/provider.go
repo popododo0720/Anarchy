@@ -237,6 +237,7 @@ func (p Provider) DiagnosePublicIP(ctx context.Context, name string) (domaindiag
 	checks = append(checks, domaindiag.Check{Name: "ovneip", Status: status, Message: "public ip inventory present"})
 
 	fipOut, err := p.runner.Run(ctx, "kubectl", "get", "ovnfip.kubeovn.io", name, "-o", "json")
+	runtimeUnavailable := false
 	if err == nil {
 		var fip ovnFIPResponse
 		if json.Unmarshal([]byte(fipOut), &fip) == nil {
@@ -247,6 +248,7 @@ func (p Provider) DiagnosePublicIP(ctx context.Context, name string) (domaindiag
 			}
 		}
 	} else {
+		runtimeUnavailable = strings.Contains(strings.ToLower(err.Error()), "doesn't have a resource type") || strings.Contains(strings.ToLower(err.Error()), "requested resource")
 		checks = append(checks, domaindiag.Check{Name: "ovnfip", Status: status, Message: "floating ip rule not realized yet"})
 		if target != "" {
 			findings = append(findings, "floating ip rule not realized yet")
@@ -258,15 +260,18 @@ func (p Provider) DiagnosePublicIP(ctx context.Context, name string) (domaindiag
 	if len(findings) == 0 {
 		findings = append(findings, "no issues detected")
 	}
-	reason, code := publicIPDiagnosisReason(status, target)
+	reason, code := publicIPDiagnosisReason(status, target, runtimeUnavailable)
 	return domaindiag.PublicIPReport{Name: eip.Metadata.Name, Status: status, Reason: reason, Code: code, Findings: findings, Checks: checks}, nil
 }
 
-func publicIPDiagnosisReason(status, target string) (string, string) {
+func publicIPDiagnosisReason(status, target string, runtimeUnavailable bool) (string, string) {
 	switch status {
 	case "realized":
 		return "ovnfip_realized", "public_ip_realized"
 	case "pending":
+		if runtimeUnavailable {
+			return "ovnfip_resource_unavailable", "public_ip_runtime_unavailable"
+		}
 		if target != "" {
 			return "ovnfip_missing", "public_ip_not_realized"
 		}

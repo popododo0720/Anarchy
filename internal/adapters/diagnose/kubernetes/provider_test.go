@@ -96,3 +96,37 @@ func TestDiagnosePublicIPReportsPendingRealization(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnosePublicIPReportsCRDUnavailable(t *testing.T) {
+	runner := &fakeRunner{responses: map[string]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+	}, errors: map[string]error{
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": errors.New("the server doesn't have a resource type \"ovnfip\""),
+	}}
+	provider := kubediag.NewProvider(runner, "anarchy-system")
+
+	report, err := provider.DiagnosePublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("DiagnosePublicIP() error = %v", err)
+	}
+	if report.Reason != "ovnfip_resource_unavailable" || report.Code != "public_ip_runtime_unavailable" {
+		t.Fatalf("report = %#v", report)
+	}
+}
+
+func TestDiagnosePublicIPReportsDetachedState(t *testing.T) {
+	runner := &fakeRunner{responses: map[string]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01"},"status":{"v4Ip":"203.0.113.10"}}`,
+	}, errors: map[string]error{
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": errors.New("NotFound"),
+	}}
+	provider := kubediag.NewProvider(runner, "anarchy-system")
+
+	report, err := provider.DiagnosePublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("DiagnosePublicIP() error = %v", err)
+	}
+	if report.Status != "detached" || report.Reason != "detached" || report.Code != "public_ip_detached" {
+		t.Fatalf("report = %#v", report)
+	}
+}
