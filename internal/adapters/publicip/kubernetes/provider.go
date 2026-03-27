@@ -93,6 +93,10 @@ func (p Provider) GetPublicIP(ctx context.Context, name string) (domainpublicip.
 }
 
 func (p Provider) AttachPublicIP(ctx context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	current, err := p.GetPublicIP(ctx, req.Name)
+	if err == nil && current.Realized && current.AttachmentTarget == req.AttachmentTarget && current.TargetIPAddress == req.TargetIPAddress {
+		return current, nil
+	}
 	target, err := domainpublicip.ParseAttachmentTarget(req.AttachmentTarget)
 	if err != nil {
 		return domainpublicip.PublicIPDetail{}, err
@@ -117,8 +121,14 @@ func (p Provider) AttachPublicIP(ctx context.Context, req domainpublicip.AttachP
 }
 
 func (p Provider) DetachPublicIP(ctx context.Context, name string) (domainpublicip.PublicIPDetail, error) {
+	current, err := p.GetPublicIP(ctx, name)
+	if err == nil && !current.Attached && !current.Realized {
+		return current, nil
+	}
 	if _, err := p.runner.Run(ctx, "kubectl", "delete", "ovnfip.kubeovn.io", name); err != nil {
-		return domainpublicip.PublicIPDetail{}, err
+		if !isNotFound(err) && !isResourceUnavailable(err) {
+			return domainpublicip.PublicIPDetail{}, err
+		}
 	}
 	patchPayload := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null}}}`,
 		attachmentTargetAnnotation,

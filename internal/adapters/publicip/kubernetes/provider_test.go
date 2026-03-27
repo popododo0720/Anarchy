@@ -12,10 +12,12 @@ import (
 )
 
 type fakeRunner struct {
-	responses map[string]string
-	errors    map[string]error
-	calls     []string
-	manifests []string
+	responses         map[string]string
+	errors            map[string]error
+	sequenceResponses map[string][]string
+	sequenceErrors    map[string][]error
+	calls             []string
+	manifests         []string
 }
 
 func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string, error) {
@@ -30,6 +32,18 @@ func (f *fakeRunner) Run(_ context.Context, name string, args ...string) (string
 	}
 	if err, ok := f.errors[key]; ok {
 		return "", err
+	}
+	if seq, ok := f.sequenceErrors[key]; ok && len(seq) > 0 {
+		err := seq[0]
+		f.sequenceErrors[key] = seq[1:]
+		if err != nil {
+			return "", err
+		}
+	}
+	if seq, ok := f.sequenceResponses[key]; ok && len(seq) > 0 {
+		out := seq[0]
+		f.sequenceResponses[key] = seq[1:]
+		return out, nil
 	}
 	for k, out := range f.responses {
 		if strings.HasSuffix(k, "*") && strings.HasPrefix(key, strings.TrimSuffix(k, "*")) {
@@ -124,8 +138,15 @@ func TestAttachPublicIPPatchesOvnEIPAnnotations(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
 		"kubectl apply -f *": "ovnfip.kubeovn.io/fip-01 created",
 		"kubectl patch ovneip.kubeovn.io fip-01 --type merge -p *": "ovneip.kubeovn.io/fip-01 patched",
-		"kubectl get ovneip.kubeovn.io fip-01 -o json":             `{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
-		"kubectl get ovnfip.kubeovn.io fip-01 -o json":             `{"metadata":{"name":"fip-01"},"spec":{"ovnEip":"fip-01","ipName":"10.0.0.25"}}`,
+	}, sequenceResponses: map[string][]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": {
+			`{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic0"}},"status":{"v4Ip":"203.0.113.10"}}`,
+			`{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+		},
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": {
+			`{"metadata":{"name":"fip-01"},"spec":{"ovnEip":"fip-01","ipName":"10.0.0.20"}}`,
+			`{"metadata":{"name":"fip-01"},"spec":{"ovnEip":"fip-01","ipName":"10.0.0.25"}}`,
+		},
 	}}
 	provider := kubepublicip.NewProvider(runner)
 
@@ -150,12 +171,38 @@ func TestAttachPublicIPPatchesOvnEIPAnnotations(t *testing.T) {
 	}
 }
 
+func TestAttachPublicIPIsNoOpWhenAlreadyRealizedForSameTarget(t *testing.T) {
+	runner := &fakeRunner{responses: map[string]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01"},"spec":{"ovnEip":"fip-01","ipName":"10.0.0.25"}}`,
+	}}
+	provider := kubepublicip.NewProvider(runner)
+
+	got, err := provider.AttachPublicIP(context.Background(), domainpublicip.AttachPublicIPRequest{Name: "fip-01", AttachmentTarget: "vm1:nic1", TargetIPAddress: "10.0.0.25"})
+	if err != nil {
+		t.Fatalf("AttachPublicIP() error = %v", err)
+	}
+	if got.Status != "realized" || !got.Realized {
+		t.Fatalf("AttachPublicIP() = %#v", got)
+	}
+	joinedCalls := strings.Join(runner.calls, "\n")
+	if strings.Contains(joinedCalls, "kubectl apply -f ") || strings.Contains(joinedCalls, "kubectl patch ovneip.kubeovn.io") {
+		t.Fatalf("calls = %#v, want no apply/patch for idempotent attach", runner.calls)
+	}
+}
+
 func TestDetachPublicIPClearsOvnEIPAnnotations(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
 		"kubectl delete ovnfip.kubeovn.io fip-01":                  "ovnfip.kubeovn.io \"fip-01\" deleted",
 		"kubectl patch ovneip.kubeovn.io fip-01 --type merge -p *": "ovneip.kubeovn.io/fip-01 patched",
-		"kubectl get ovneip.kubeovn.io fip-01 -o json":             `{"metadata":{"name":"fip-01"},"status":{"v4Ip":"203.0.113.10"}}`,
-	}, errors: map[string]error{"kubectl get ovnfip.kubeovn.io fip-01 -o json": errors.New("NotFound")}}
+	}, sequenceResponses: map[string][]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": {
+			`{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+			`{"metadata":{"name":"fip-01"},"status":{"v4Ip":"203.0.113.10"}}`,
+		},
+	}, sequenceErrors: map[string][]error{
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": {nil, errors.New("NotFound")},
+	}}
 	provider := kubepublicip.NewProvider(runner)
 
 	got, err := provider.DetachPublicIP(context.Background(), "fip-01")
@@ -171,5 +218,33 @@ func TestDetachPublicIPClearsOvnEIPAnnotations(t *testing.T) {
 	}
 	if !strings.Contains(joinedCalls, "kubectl delete ovnfip.kubeovn.io fip-01") {
 		t.Fatalf("calls = %#v, want ovnfip delete", runner.calls)
+	}
+}
+
+func TestDetachPublicIPIgnoresMissingOvnFip(t *testing.T) {
+	runner := &fakeRunner{responses: map[string]string{
+		"kubectl patch ovneip.kubeovn.io fip-01 --type merge -p *": "ovneip.kubeovn.io/fip-01 patched",
+	}, sequenceResponses: map[string][]string{
+		"kubectl get ovneip.kubeovn.io fip-01 -o json": {
+			`{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic1"}},"status":{"v4Ip":"203.0.113.10"}}`,
+			`{"metadata":{"name":"fip-01"},"status":{"v4Ip":"203.0.113.10"}}`,
+		},
+	}, errors: map[string]error{
+		"kubectl delete ovnfip.kubeovn.io fip-01": errors.New("NotFound"),
+	}, sequenceErrors: map[string][]error{
+		"kubectl get ovnfip.kubeovn.io fip-01 -o json": {errors.New("NotFound"), errors.New("NotFound")},
+	}}
+	provider := kubepublicip.NewProvider(runner)
+
+	got, err := provider.DetachPublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("DetachPublicIP() error = %v", err)
+	}
+	if got.Status != "detached" || got.Attached {
+		t.Fatalf("DetachPublicIP() = %#v", got)
+	}
+	joinedCalls := strings.Join(runner.calls, "\n")
+	if !strings.Contains(joinedCalls, "kubectl patch ovneip.kubeovn.io fip-01") {
+		t.Fatalf("calls = %#v, want patch after missing delete", runner.calls)
 	}
 }
