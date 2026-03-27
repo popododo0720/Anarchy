@@ -11,7 +11,7 @@ import (
 	nadkube "github.com/popododo0720/anarchy/internal/adapters/nad/kubernetes"
 	networkkube "github.com/popododo0720/anarchy/internal/adapters/network/kubernetes"
 	nodekube "github.com/popododo0720/anarchy/internal/adapters/node/kubernetes"
-	publicipstatic "github.com/popododo0720/anarchy/internal/adapters/publicip/static"
+	publicipkube "github.com/popododo0720/anarchy/internal/adapters/publicip/kubernetes"
 	subnetkube "github.com/popododo0720/anarchy/internal/adapters/subnet/kubernetes"
 	systemkube "github.com/popododo0720/anarchy/internal/adapters/system/kubernetes"
 	vmkube "github.com/popododo0720/anarchy/internal/adapters/vm/kubernetes"
@@ -50,7 +50,7 @@ func main() {
 	nodeHandler := httpnode.NewHandler(appnode.NewService(nodekube.NewProvider(runner)))
 	nadHandler := httpnad.NewHandler(appnad.NewService(nadkube.NewProvider(runner)))
 	networkHandler := httpnetwork.NewHandler(appnetwork.NewService(networkkube.NewProvider(runner)))
-	publicIPHandler := httppublicip.NewHandler(apppublicip.NewService(publicipstatic.NewProvider(), vmkube.NewProvider(runner, namespace)))
+	publicIPHandler := httppublicip.NewHandler(apppublicip.NewService(publicipkube.NewProvider(runner), vmkube.NewProvider(runner, namespace)))
 	subnetHandler := httpsubnet.NewHandler(appsubnet.NewService(subnetkube.NewProvider(runner)))
 	diagnoseHandler := httpdiag.NewHandler(appdiag.NewService(diagkube.NewProvider(runner, namespace)))
 	imageHandler := httpimage.NewHandler(appimage.NewService(imagekube.NewProvider(runner, namespace)))
