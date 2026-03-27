@@ -61,6 +61,29 @@ func TestListPublicIPsParsesKubeOVNOvnEIPs(t *testing.T) {
 	}
 }
 
+func TestListPublicIPsFallsBackWhenOvnFipCRDIsUnavailable(t *testing.T) {
+	runner := &fakeRunner{
+		responses: map[string]string{
+			"kubectl get ovneips.kubeovn.io -o json": `{"items":[{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic0"}},"spec":{"v4Ip":"203.0.113.10"}}]}`,
+		},
+		errors: map[string]error{
+			"kubectl get ovnfips.kubeovn.io -o json": errors.New("the server doesn't have a resource type \"ovnfips\""),
+		},
+	}
+	provider := kubepublicip.NewProvider(runner)
+
+	got, err := provider.ListPublicIPs(context.Background())
+	if err != nil {
+		t.Fatalf("ListPublicIPs() error = %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("ListPublicIPs() len = %d, want 1", len(got))
+	}
+	if got[0] != (domainpublicip.PublicIPSummary{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0"}) {
+		t.Fatalf("ListPublicIPs() = %#v", got)
+	}
+}
+
 func TestGetPublicIPReturnsStructuredDetail(t *testing.T) {
 	runner := &fakeRunner{responses: map[string]string{
 		"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01"},"status":{"v4Ip":"203.0.113.10"}}`,
@@ -73,6 +96,26 @@ func TestGetPublicIPReturnsStructuredDetail(t *testing.T) {
 		t.Fatalf("GetPublicIP() error = %v", err)
 	}
 	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "", TargetIPAddress: "10.0.0.25", Type: "floating"}) {
+		t.Fatalf("GetPublicIP() = %#v", got)
+	}
+}
+
+func TestGetPublicIPFallsBackWhenOvnFipCRDIsUnavailable(t *testing.T) {
+	runner := &fakeRunner{
+		responses: map[string]string{
+			"kubectl get ovneip.kubeovn.io fip-01 -o json": `{"metadata":{"name":"fip-01","annotations":{"anarchy.io/attachment-target":"vm1:nic0"}},"status":{"v4Ip":"203.0.113.10"}}`,
+		},
+		errors: map[string]error{
+			"kubectl get ovnfip.kubeovn.io fip-01 -o json": errors.New("the server doesn't have a resource type \"ovnfip\""),
+		},
+	}
+	provider := kubepublicip.NewProvider(runner)
+
+	got, err := provider.GetPublicIP(context.Background(), "fip-01")
+	if err != nil {
+		t.Fatalf("GetPublicIP() error = %v", err)
+	}
+	if got != (domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}) {
 		t.Fatalf("GetPublicIP() = %#v", got)
 	}
 }

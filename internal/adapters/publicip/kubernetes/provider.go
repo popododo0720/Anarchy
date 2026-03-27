@@ -164,6 +164,9 @@ func publicIPAddress(item ovnEIPItem) string {
 func (p Provider) listFIPTargets(ctx context.Context) (map[string]string, error) {
 	out, err := p.runner.Run(ctx, "kubectl", "get", "ovnfips.kubeovn.io", "-o", "json")
 	if err != nil {
+		if isNotFound(err) || isResourceUnavailable(err) {
+			return map[string]string{}, nil
+		}
 		return nil, err
 	}
 	var payload ovnFIPListResponse
@@ -184,7 +187,7 @@ func (p Provider) listFIPTargets(ctx context.Context) (map[string]string, error)
 func (p Provider) getFIPTarget(ctx context.Context, name string) (string, bool, error) {
 	out, err := p.runner.Run(ctx, "kubectl", "get", "ovnfip.kubeovn.io", name, "-o", "json")
 	if err != nil {
-		if isNotFound(err) {
+		if isNotFound(err) || isResourceUnavailable(err) {
 			return "", false, nil
 		}
 		return "", false, err
@@ -199,6 +202,11 @@ func (p Provider) getFIPTarget(ctx context.Context, name string) (string, bool, 
 func isNotFound(err error) bool {
 	message := strings.ToLower(err.Error())
 	return strings.Contains(message, "notfound") || strings.Contains(message, "not found")
+}
+
+func isResourceUnavailable(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "doesn't have a resource type") || strings.Contains(message, "the server could not find the requested resource")
 }
 
 func (p Provider) writeFIPManifest(req domainpublicip.AttachPublicIPRequest) (string, error) {
