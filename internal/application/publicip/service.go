@@ -42,9 +42,14 @@ func (s *Service) AttachPublicIP(ctx context.Context, req domainpublicip.AttachP
 		if err != nil {
 			return domainpublicip.PublicIPDetail{}, err
 		}
-		if !hasAttachment(vmDetail.NetworkAttachments, target.NICName) {
+		attachment, ok := findAttachment(vmDetail.NetworkAttachments, target.NICName)
+		if !ok {
 			return domainpublicip.PublicIPDetail{}, fmt.Errorf("nic %q not found on vm %q", target.NICName, target.VMName)
 		}
+		if strings.TrimSpace(attachment.IPAddress) == "" {
+			return domainpublicip.PublicIPDetail{}, fmt.Errorf("nic %q on vm %q does not have an ip address", target.NICName, target.VMName)
+		}
+		req.TargetIPAddress = strings.TrimSpace(attachment.IPAddress)
 	}
 	req.Name = name
 	req.AttachmentTarget = target.VMName + ":" + target.NICName
@@ -59,11 +64,11 @@ func (s *Service) DetachPublicIP(ctx context.Context, name string) (domainpublic
 	return s.provider.DetachPublicIP(ctx, trimmed)
 }
 
-func hasAttachment(items []domainvm.NetworkAttachment, nicName string) bool {
+func findAttachment(items []domainvm.NetworkAttachment, nicName string) (domainvm.NetworkAttachment, bool) {
 	for _, item := range items {
 		if item.Name == nicName {
-			return true
+			return item, true
 		}
 	}
-	return false
+	return domainvm.NetworkAttachment{}, false
 }

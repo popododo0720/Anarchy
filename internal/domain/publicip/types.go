@@ -27,6 +27,7 @@ func ParseAttachmentTarget(raw string) (AttachmentTarget, error) {
 type AttachPublicIPRequest struct {
 	Name             string `json:"name"`
 	AttachmentTarget string `json:"attachmentTarget"`
+	TargetIPAddress  string `json:"targetIpAddress,omitempty"`
 }
 
 type PublicIPSummary struct {

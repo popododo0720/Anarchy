@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	kexec "github.com/popododo0720/anarchy/internal/adapters/kubernetes/exec"
 	domainpublicip "github.com/popododo0720/anarchy/internal/domain/publicip"
@@ -73,6 +74,14 @@ func (p Provider) AttachPublicIP(ctx context.Context, req domainpublicip.AttachP
 	if err != nil {
 		return domainpublicip.PublicIPDetail{}, err
 	}
+	manifest, err := p.writeFIPManifest(req)
+	if err != nil {
+		return domainpublicip.PublicIPDetail{}, err
+	}
+	defer os.Remove(manifest)
+	if _, err := p.runner.Run(ctx, "kubectl", "apply", "-f", manifest); err != nil {
+		return domainpublicip.PublicIPDetail{}, err
+	}
 	patchPayload := fmt.Sprintf(`{"metadata":{"annotations":{"%s":"%s","%s":"%s","%s":"%s"}}}`,
 		attachmentTargetAnnotation, req.AttachmentTarget,
 		attachmentVMAnnotation, target.VMName,
@@ -85,6 +94,9 @@ func (p Provider) AttachPublicIP(ctx context.Context, req domainpublicip.AttachP
 }
 
 func (p Provider) DetachPublicIP(ctx context.Context, name string) (domainpublicip.PublicIPDetail, error) {
+	if _, err := p.runner.Run(ctx, "kubectl", "delete", "ovnfip.kubeovn.io", name); err != nil {
+		return domainpublicip.PublicIPDetail{}, err
+	}
 	patchPayload := fmt.Sprintf(`{"metadata":{"annotations":{"%s":null,"%s":null,"%s":null}}}`,
 		attachmentTargetAnnotation,
 		attachmentVMAnnotation,
@@ -122,4 +134,28 @@ func publicIPAddress(item ovnEIPItem) string {
 		return item.Status.V4IP
 	}
 	return item.Spec.V4IP
+}
+
+func (p Provider) writeFIPManifest(req domainpublicip.AttachPublicIPRequest) (string, error) {
+	file, err := os.CreateTemp("", "anarchy-publicip-fip-*.yaml")
+	if err != nil {
+		return "", err
+	}
+	manifest := fmt.Sprintf(`apiVersion: kubeovn.io/v1
+kind: OvnFip
+metadata:
+  name: %s
+spec:
+  ovnEip: %s
+  ipType: ip
+  ipName: %s
+`, req.Name, req.Name, req.TargetIPAddress)
+	if _, err := file.WriteString(manifest); err != nil {
+		file.Close()
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		return "", err
+	}
+	return file.Name(), nil
 }

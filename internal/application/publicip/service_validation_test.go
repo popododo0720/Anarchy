@@ -67,7 +67,7 @@ func TestServiceAttachPublicIPUsesNormalizedRequest(t *testing.T) {
 	provider := &capturingPublicIPProvider{}
 	svc := apppublicip.NewService(provider, fakeVMProvider{vmDetail: domainvm.VMDetail{
 		Name:               "vm1",
-		NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic1"}},
+		NetworkAttachments: []domainvm.NetworkAttachment{{Name: "nic1", IPAddress: "10.0.0.25"}},
 	}})
 
 	item, err := svc.AttachPublicIP(context.Background(), domainpublicip.AttachPublicIPRequest{Name: " fip-01 ", AttachmentTarget: " vm1:nic1 "})
@@ -76,6 +76,9 @@ func TestServiceAttachPublicIPUsesNormalizedRequest(t *testing.T) {
 	}
 	if provider.lastReq.Name != "fip-01" || provider.lastReq.AttachmentTarget != "vm1:nic1" {
 		t.Fatalf("provider request = %#v", provider.lastReq)
+	}
+	if provider.lastReq.TargetIPAddress != "10.0.0.25" {
+		t.Fatalf("provider request target ip = %q, want %q", provider.lastReq.TargetIPAddress, "10.0.0.25")
 	}
 	if item.Name != "fip-01" || item.AttachmentTarget != "vm1:nic1" {
 		t.Fatalf("AttachPublicIP() = %#v", item)
