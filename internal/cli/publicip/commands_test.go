@@ -67,6 +67,24 @@ func TestRunAttachCallsEndpoint(t *testing.T) {
 	}
 }
 
+func TestRunAttachRejectsInvalidTargetBeforeCallingAPI(t *testing.T) {
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	var out bytes.Buffer
+	err := clipublicip.Run([]string{"attach", "fip-01", "vm1"}, server.URL, server.Client(), &out)
+	if err == nil {
+		t.Fatal("Run() error = nil, want error")
+	}
+	if called {
+		t.Fatal("API was called for invalid attachment target")
+	}
+}
+
 func TestRunDetachCallsEndpoint(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/public-ips/fip-01/detach" {

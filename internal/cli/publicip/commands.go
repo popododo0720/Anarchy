@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"strings"
+
+	domainpublicip "github.com/popododo0720/anarchy/internal/domain/publicip"
 )
 
 type Client struct {
@@ -85,6 +87,9 @@ func runShow(client Client, name string, out io.Writer) error {
 }
 
 func runAttach(client Client, req attachPublicIPRequest, out io.Writer) error {
+	if _, err := domainpublicip.ParseAttachmentTarget(req.AttachmentTarget); err != nil {
+		return err
+	}
 	var item publicIPDetail
 	if err := client.postJSON("/api/v1/public-ips/"+req.Name+"/attach", req, &item); err != nil {
 		return err

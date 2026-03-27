@@ -23,8 +23,8 @@ func (fakeProvider) GetPublicIP(context.Context, string) (domainpublicip.PublicI
 	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic0", Type: "floating"}, nil
 }
 
-func (fakeProvider) AttachPublicIP(context.Context, domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
-	return domainpublicip.PublicIPDetail{Name: "fip-01", Address: "203.0.113.10", Attached: true, AttachmentTarget: "vm1:nic1", Type: "floating"}, nil
+func (fakeProvider) AttachPublicIP(_ context.Context, req domainpublicip.AttachPublicIPRequest) (domainpublicip.PublicIPDetail, error) {
+	return domainpublicip.PublicIPDetail{Name: req.Name, Address: "203.0.113.10", Attached: true, AttachmentTarget: req.AttachmentTarget, Type: "floating"}, nil
 }
 
 func (fakeProvider) DetachPublicIP(context.Context, string) (domainpublicip.PublicIPDetail, error) {
@@ -32,7 +32,7 @@ func (fakeProvider) DetachPublicIP(context.Context, string) (domainpublicip.Publ
 }
 
 func TestListPublicIPsHandlerReturnsStructuredSummary(t *testing.T) {
-	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public-ips", nil)
 	res := httptest.NewRecorder()
 
@@ -50,7 +50,7 @@ func TestListPublicIPsHandlerReturnsStructuredSummary(t *testing.T) {
 }
 
 func TestGetPublicIPHandlerReturnsStructuredDetail(t *testing.T) {
-	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/public-ips/fip-01", nil)
 	req.SetPathValue("name", "fip-01")
 	res := httptest.NewRecorder()
@@ -69,7 +69,7 @@ func TestGetPublicIPHandlerReturnsStructuredDetail(t *testing.T) {
 }
 
 func TestAttachPublicIPHandlerReturnsUpdatedDetail(t *testing.T) {
-	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/attach", strings.NewReader(`{"name":"fip-01","attachmentTarget":"vm1:nic1"}`))
 	req.SetPathValue("name", "fip-01")
 	res := httptest.NewRecorder()
@@ -80,8 +80,32 @@ func TestAttachPublicIPHandlerReturnsUpdatedDetail(t *testing.T) {
 	}
 }
 
+func TestAttachPublicIPHandlerRejectsMismatchedPathAndBodyName(t *testing.T) {
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/attach", strings.NewReader(`{"name":"other","attachmentTarget":"vm1:nic1"}`))
+	req.SetPathValue("name", "fip-01")
+	res := httptest.NewRecorder()
+
+	handler.AttachPublicIP(res, req)
+	if res.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusBadRequest)
+	}
+}
+
+func TestAttachPublicIPHandlerUsesPathNameWhenBodyNameMissing(t *testing.T) {
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/attach", strings.NewReader(`{"attachmentTarget":"vm1:nic1"}`))
+	req.SetPathValue("name", "fip-01")
+	res := httptest.NewRecorder()
+
+	handler.AttachPublicIP(res, req)
+	if res.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d", res.Code, http.StatusAccepted)
+	}
+}
+
 func TestDetachPublicIPHandlerReturnsUpdatedDetail(t *testing.T) {
-	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}))
+	handler := httppublicip.NewHandler(apppublicip.NewService(fakeProvider{}, nil))
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/public-ips/fip-01/detach", nil)
 	req.SetPathValue("name", "fip-01")
 	res := httptest.NewRecorder()

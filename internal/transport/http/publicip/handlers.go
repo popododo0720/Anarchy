@@ -44,14 +44,22 @@ func (h *Handler) GetPublicIP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AttachPublicIP(w http.ResponseWriter, r *http.Request) {
+	name := strings.TrimSpace(r.PathValue("name"))
 	var req domainpublicip.AttachPublicIPRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 		return
 	}
+	if req.Name == "" {
+		req.Name = name
+	}
+	if strings.TrimSpace(req.Name) != name {
+		writeError(w, http.StatusBadRequest, "invalid_request", "path name and body name must match")
+		return
+	}
 	item, err := h.service.AttachPublicIP(r.Context(), req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "public_ip_attach_failed", err.Error())
+		writeError(w, http.StatusBadRequest, "public_ip_attach_failed", err.Error())
 		return
 	}
 	writeJSON(w, http.StatusAccepted, item)

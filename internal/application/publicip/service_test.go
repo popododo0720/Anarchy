@@ -27,7 +27,7 @@ func (fakeProvider) DetachPublicIP(context.Context, string) (domainpublicip.Publ
 }
 
 func TestServiceDelegatesToProvider(t *testing.T) {
-	svc := apppublicip.NewService(fakeProvider{})
+	svc := apppublicip.NewService(fakeProvider{}, nil)
 	items, err := svc.ListPublicIPs(context.Background())
 	if err != nil {
 		t.Fatalf("ListPublicIPs() error = %v", err)
