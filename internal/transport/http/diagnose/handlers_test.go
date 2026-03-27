@@ -23,7 +23,7 @@ func (fakeProvider) DiagnoseVM(context.Context, string) (domaindiag.VMReport, er
 }
 
 func (fakeProvider) DiagnosePublicIP(context.Context, string) (domaindiag.PublicIPReport, error) {
-	return domaindiag.PublicIPReport{Name: "fip-01", Status: "pending", Findings: []string{"floating ip rule not realized yet"}}, nil
+	return domaindiag.PublicIPReport{Name: "fip-01", Status: "pending", Reason: "ovnfip_missing", Code: "public_ip_not_realized", Findings: []string{"floating ip rule not realized yet"}}, nil
 }
 
 func TestDiagnoseClusterHandlerReturnsStructuredReport(t *testing.T) {
@@ -77,7 +77,7 @@ func TestDiagnosePublicIPHandlerReturnsStructuredReport(t *testing.T) {
 	if err := json.Unmarshal(res.Body.Bytes(), &body); err != nil {
 		t.Fatalf("unmarshal response: %v", err)
 	}
-	if body["name"] != "fip-01" || body["status"] != "pending" {
+	if body["name"] != "fip-01" || body["status"] != "pending" || body["reason"] != "ovnfip_missing" || body["code"] != "public_ip_not_realized" {
 		t.Fatalf("body = %#v", body)
 	}
 }

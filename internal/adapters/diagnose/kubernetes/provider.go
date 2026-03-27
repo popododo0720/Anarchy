@@ -258,5 +258,20 @@ func (p Provider) DiagnosePublicIP(ctx context.Context, name string) (domaindiag
 	if len(findings) == 0 {
 		findings = append(findings, "no issues detected")
 	}
-	return domaindiag.PublicIPReport{Name: eip.Metadata.Name, Status: status, Findings: findings, Checks: checks}, nil
+	reason, code := publicIPDiagnosisReason(status, target)
+	return domaindiag.PublicIPReport{Name: eip.Metadata.Name, Status: status, Reason: reason, Code: code, Findings: findings, Checks: checks}, nil
+}
+
+func publicIPDiagnosisReason(status, target string) (string, string) {
+	switch status {
+	case "realized":
+		return "ovnfip_realized", "public_ip_realized"
+	case "pending":
+		if target != "" {
+			return "ovnfip_missing", "public_ip_not_realized"
+		}
+		return "attachment_pending", "public_ip_pending"
+	default:
+		return "detached", "public_ip_detached"
+	}
 }

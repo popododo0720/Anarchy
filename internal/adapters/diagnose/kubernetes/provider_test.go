@@ -86,6 +86,9 @@ func TestDiagnosePublicIPReportsPendingRealization(t *testing.T) {
 	if report.Name != "fip-01" || report.Status != "pending" {
 		t.Fatalf("report = %#v", report)
 	}
+	if report.Reason != "ovnfip_missing" || report.Code != "public_ip_not_realized" {
+		t.Fatalf("report = %#v", report)
+	}
 	joined := strings.Join(report.Findings, " | ")
 	for _, want := range []string{"public ip address: 203.0.113.10", "attachment target: vm1:nic1", "floating ip rule not realized yet"} {
 		if !strings.Contains(joined, want) {

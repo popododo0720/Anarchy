@@ -22,6 +22,8 @@ type VMReport struct {
 type PublicIPReport struct {
 	Name     string   `json:"name"`
 	Status   string   `json:"status"`
+	Reason   string   `json:"reason,omitempty"`
+	Code     string   `json:"code,omitempty"`
 	Findings []string `json:"findings"`
 	Checks   []Check  `json:"checks,omitempty"`
 }

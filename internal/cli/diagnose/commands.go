@@ -27,6 +27,8 @@ type vmReport struct {
 type publicIPReport struct {
 	Name     string   `json:"name"`
 	Status   string   `json:"status"`
+	Reason   string   `json:"reason,omitempty"`
+	Code     string   `json:"code,omitempty"`
 	Findings []string `json:"findings"`
 }
 
@@ -90,7 +92,7 @@ func runPublicIP(client Client, name string, out io.Writer) error {
 	if err := client.getJSON("/api/v1/diagnose/public-ips/"+name, &resp); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(out, "Name: %s\nStatus: %s\n", resp.Name, resp.Status); err != nil {
+	if _, err := fmt.Fprintf(out, "Name: %s\nStatus: %s\nReason: %s\nCode: %s\n", resp.Name, resp.Status, valueOrUnknown(resp.Reason), valueOrUnknown(resp.Code)); err != nil {
 		return err
 	}
 	for _, finding := range resp.Findings {
@@ -111,4 +113,11 @@ func (c Client) getJSON(path string, target any) error {
 		return fmt.Errorf("api error: %s", resp.Status)
 	}
 	return json.NewDecoder(resp.Body).Decode(target)
+}
+
+func valueOrUnknown(v string) string {
+	if v == "" {
+		return "unknown"
+	}
+	return v
 }
